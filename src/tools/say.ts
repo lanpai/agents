@@ -10,7 +10,10 @@ export const say: SimTool = {
     input_schema: {
       type: "object",
       properties: {
-        message: { type: "string", description: "What to say, under 15 words" },
+        message: {
+          type: "string",
+          description: "What to say, under 15 words, kept short and natural",
+        },
       },
       required: ["message"],
     },

@@ -3,7 +3,8 @@ import type { SimTool } from "./types";
 
 export const runTo: SimTool = {
   name: "run_to",
-  condition: (humanoid, world) => destinations(humanoid, world).length > 0,
+  condition: (humanoid, world) =>
+    destinations(humanoid, world).length > 0 && humanoid.stamina > 0,
   definition: (humanoid, world) => ({
     name: "run_to",
     description:

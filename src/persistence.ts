@@ -1,16 +1,13 @@
-import {
-  BODY_PARTS,
-  Humanoid,
-  TEMPERATURES,
-  type BodyPart,
-  type Temperature,
-} from "./humanoid";
+import { BODY_PARTS, Humanoid, type BodyPart } from "./humanoid";
+import { createItem } from "./items";
+import type { Item } from "./items/types";
 
 const STORAGE_KEY = "sim.humanoids";
+const ITEMS_KEY = "sim.items";
 
 type SavedHumanoid = {
   name: string;
-  personality: string;
+  description: string;
   x: number;
   y: number;
   target: { x: number; y: number } | null;
@@ -18,18 +15,75 @@ type SavedHumanoid = {
   memory: string[];
   longMemory: string;
   unconsolidated: string[];
-  temperature: Temperature;
   body: Record<BodyPart, number>;
   stamina: number;
   dead: boolean;
   running: boolean;
-  inventory: string[];
 };
+
+type SavedItem = {
+  name: string;
+  x: number;
+  y: number;
+  holder: string | null;
+};
+
+export function saveItems(items: Item[]) {
+  const data: SavedItem[] = items.map((item) => ({
+    name: item.name,
+    // for held items, remember the holder's position as a drop fallback
+    x: item.droppedPosition?.x ?? item.holder?.x ?? 0,
+    y: item.droppedPosition?.y ?? item.holder?.y ?? 0,
+    holder: item.holder?.name ?? null,
+  }));
+  try {
+    localStorage.setItem(ITEMS_KEY, JSON.stringify(data));
+  } catch {
+    // storage full or unavailable — the sim just won't persist
+  }
+}
+
+export function loadItems(humanoids: Humanoid[]): Item[] {
+  try {
+    const raw = localStorage.getItem(ITEMS_KEY);
+    if (!raw) return [];
+    const data: unknown = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+    const items: Item[] = [];
+    for (const entry of data) {
+      const saved = entry as Partial<SavedItem> | null;
+      if (
+        !saved ||
+        typeof saved.name !== "string" ||
+        typeof saved.x !== "number" ||
+        typeof saved.y !== "number"
+      ) {
+        continue;
+      }
+      const item = createItem(saved.name, saved.x, saved.y);
+      if (!item) continue;
+      if (typeof saved.holder === "string") {
+        const holder = humanoids.find(
+          (humanoid) => humanoid.name === saved.holder,
+        );
+        // a holder that no longer exists leaves the item dropped at the saved spot
+        if (holder) {
+          item.holder = holder;
+          item.droppedPosition = null;
+        }
+      }
+      items.push(item);
+    }
+    return items;
+  } catch {
+    return [];
+  }
+}
 
 export function saveHumanoids(humanoids: Humanoid[]) {
   const data: SavedHumanoid[] = humanoids.map((humanoid) => ({
     name: humanoid.name,
-    personality: humanoid.personality,
+    description: humanoid.description,
     x: humanoid.x,
     y: humanoid.y,
     target: humanoid.target,
@@ -37,12 +91,10 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     memory: humanoid.memory,
     longMemory: humanoid.longMemory,
     unconsolidated: humanoid.unconsolidated,
-    temperature: humanoid.temperature,
     body: humanoid.body,
     stamina: humanoid.stamina,
     dead: humanoid.dead,
     running: humanoid.running,
-    inventory: humanoid.inventory,
   }));
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -70,7 +122,7 @@ function restore(entry: unknown): Humanoid | null {
   if (
     !saved ||
     typeof saved.name !== "string" ||
-    typeof saved.personality !== "string" ||
+    typeof saved.description !== "string" ||
     typeof saved.x !== "number" ||
     typeof saved.y !== "number"
   ) {
@@ -78,7 +130,7 @@ function restore(entry: unknown): Humanoid | null {
   }
   const humanoid = new Humanoid(
     saved.name,
-    saved.personality,
+    saved.description,
     saved.x,
     saved.y,
   );
@@ -95,12 +147,6 @@ function restore(entry: unknown): Humanoid | null {
     humanoid.longMemory = saved.longMemory;
   humanoid.memory = onlyStrings(saved.memory);
   humanoid.unconsolidated = onlyStrings(saved.unconsolidated);
-  if (
-    saved.temperature &&
-    (TEMPERATURES as readonly string[]).includes(saved.temperature)
-  ) {
-    humanoid.temperature = saved.temperature;
-  }
   for (const part of BODY_PARTS) {
     const health = saved.body?.[part];
     if (typeof health === "number") humanoid.body[part] = clamp(health);
@@ -109,7 +155,6 @@ function restore(entry: unknown): Humanoid | null {
     humanoid.stamina = clamp(saved.stamina);
   humanoid.dead = saved.dead === true;
   humanoid.running = saved.running === true;
-  humanoid.inventory = onlyStrings(saved.inventory);
   return humanoid;
 }
 

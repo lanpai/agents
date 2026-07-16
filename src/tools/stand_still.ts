@@ -3,6 +3,7 @@ import type { SimTool } from "./types";
 
 export const standStill: SimTool = {
   name: "stand_still",
+  condition: (humanoid) => humanoid.isMoving() || humanoid.followName !== null,
   definition: {
     name: "stand_still",
     description: "Stop moving and stand in place.",

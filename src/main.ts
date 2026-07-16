@@ -1,10 +1,21 @@
 import { maybeUpdateMemory, scheduleThinking } from "./agent";
 import { camera, initCameraControls } from "./camera";
-import { Humanoid } from "./humanoid";
+import { eveningWhiskey } from "./characters/eveningWhiskey";
+import { luckyInLove } from "./characters/luckyInLove";
+import { oldFashioned } from "./characters/oldFashioned";
+import { secondOpinion } from "./characters/secondOpinion";
+import { items } from "./items";
+import { Knife } from "./items/knife";
 import { drawHouse } from "./locations";
 import { drawLog } from "./log";
-import { loadHumanoids, saveHumanoids } from "./persistence";
+import {
+  loadHumanoids,
+  loadItems,
+  saveHumanoids,
+  saveItems,
+} from "./persistence";
 import { drawSelectionBox, initSelection, selected } from "./selection";
+import { initSidebar } from "./sidebar";
 import { isSpeaking, pauseSpeech, resumeSpeech } from "./tts";
 
 const HUMANOID_COUNT = 5;
@@ -16,14 +27,21 @@ initCameraControls(canvas);
 
 const humanoids = loadHumanoids().slice(0, HUMANOID_COUNT);
 if (humanoids.length === 0) {
-  humanoids.push(Humanoid.spawnKiller());
-  while (humanoids.length < HUMANOID_COUNT) {
-    humanoids.push(Humanoid.spawnRandom(humanoids.length, humanoids));
-  }
+  humanoids.push(eveningWhiskey);
+  humanoids.push(secondOpinion);
+  humanoids.push(luckyInLove);
+  humanoids.push(oldFashioned);
 }
 
-setInterval(() => saveHumanoids(humanoids), 3000);
-const beforeUnload = () => saveHumanoids(humanoids);
+items.push(...loadItems(humanoids));
+if (items.length === 0) items.push(new Knife(70, -300));
+
+const save = () => {
+  saveHumanoids(humanoids);
+  saveItems(items);
+};
+setInterval(save, 3000);
+const beforeUnload = save;
 window.addEventListener("beforeunload", beforeUnload);
 
 export function clearData() {
@@ -36,26 +54,15 @@ export function clearData() {
 initSelection(canvas, humanoids);
 
 let paused = false;
-const pauseButton = document.createElement("button");
-pauseButton.textContent = "pause";
-Object.assign(pauseButton.style, {
-  position: "fixed",
-  top: "10px",
-  left: "10px",
-  font: "14px monospace",
-  padding: "4px 12px",
-  background: "#fff",
-  border: "1px solid #000",
-  borderRadius: "0",
-  cursor: "pointer",
+initSidebar({
+  isPaused: () => paused,
+  setPaused: (value) => {
+    paused = value;
+    if (paused) pauseSpeech();
+    else resumeSpeech();
+  },
+  clearData,
 });
-pauseButton.addEventListener("click", () => {
-  paused = !paused;
-  pauseButton.textContent = paused ? "play" : "pause";
-  if (paused) pauseSpeech();
-  else resumeSpeech();
-});
-document.body.appendChild(pauseButton);
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -76,9 +83,11 @@ function draw(now: number) {
   drawHouse(ctx);
 
   // painter's order: lower on screen draws in front
-  const ordered = [...humanoids].sort((a, b) => a.y - b.y);
-  for (const humanoid of ordered) humanoid.draw(ctx);
-  for (const humanoid of ordered) humanoid.drawOverlay(ctx, now);
+  const sortedHumanoids = [...humanoids].sort((a, b) => a.y - b.y);
+  for (const humanoid of sortedHumanoids) humanoid.draw(ctx);
+  for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx, now);
+
+  for (const item of items) item.draw(ctx);
 
   // screen-space UI
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

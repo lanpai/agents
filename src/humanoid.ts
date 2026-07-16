@@ -1,4 +1,4 @@
-import { ROOMS, roomOf } from "./locations";
+import { randomPointInRoom, ROOMS, roomOf } from "./locations";
 import { logAction } from "./log";
 import { selected } from "./selection";
 import { speak } from "./tts";
@@ -18,22 +18,11 @@ export const BODY_PARTS = [
 ] as const;
 export type BodyPart = (typeof BODY_PARTS)[number];
 
-export const TEMPERATURES = [
-  "freezing",
-  "cold",
-  "normal",
-  "warm",
-  "hot",
-] as const;
-export type Temperature = (typeof TEMPERATURES)[number];
-
 const WALK_SPEED = 24;
 const RUN_MULTIPLIER = 2;
 const STAMINA_DRAIN = 4; // per second of walking; running doubles it
 const STAMINA_REGEN = 6; // per second while not moving
 const BODY_HEAL_RATE = 0.3; // per second — much slower than stamina regen
-const EXHAUSTED_LEG_DAMAGE = 2; // per second per leg while moving at 0 stamina
-const SPAWN_MARGIN = 24; // keep spawn points off the walls
 const HOP_DURATION = 0.3;
 const HOP_HEIGHT = 5;
 const HOP_MAX_TILT = 0.3;
@@ -43,46 +32,14 @@ const MEMORY_LIMIT = 8;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
 
-const NAMES = [
-  "Ava",
-  "Bo",
-  "Cyrus",
-  "Dara",
-  "Echo",
-  "Faye",
-  "Gus",
-  "Hana",
-  "Ivo",
-  "Juno",
-  "Kai",
-  "Lira",
-  "Milo",
-  "Nova",
-  "Opal",
-  "Pax",
-  "Quinn",
-  "Rue",
-  "Sol",
-  "Tess",
-];
-
-const PERSONALITIES = [
-  "cheerful and chatty",
-  "shy but curious",
-  "restless explorer",
-  "calm and thoughtful",
-  "playful prankster",
-  "nosy gossip",
-  "quiet loner who warms up slowly",
-  "dramatic storyteller",
-];
+type Status = "killer";
 
 const sprite = new Image();
 sprite.src = "/humanoid.png";
 
 export class Humanoid {
   name: string;
-  personality: string;
+  description: string;
   x: number;
   y: number;
   vx = 0;
@@ -90,7 +47,8 @@ export class Humanoid {
   hopT = 0; // 0 = grounded, (0,1) = mid-hop arc
   hopTilt = 0;
 
-  temperature: Temperature = "normal";
+  status = new Set<Status>();
+
   body: Record<BodyPart, number> = {
     head: 100,
     torso: 100,
@@ -102,7 +60,8 @@ export class Humanoid {
   stamina = 100;
   dead = false;
   running = false;
-  inventory: string[] = [];
+
+  voicePitch = 1.0;
 
   target: { x: number; y: number } | null = null;
   pendingPath: { x: number; y: number }[] = []; // waypoints after the current target
@@ -117,35 +76,13 @@ export class Humanoid {
   consolidating = false;
   nextMemoryAt = 0;
 
-  constructor(name: string, personality: string, x: number, y: number) {
+  constructor(name: string, description: string, x: number, y: number) {
     this.name = name;
-    this.personality = personality;
+    this.description = description;
     this.x = x;
     this.y = y;
     // stagger first decisions so 20 agents don't all call the API at once
     this.nextThinkAt = performance.now() + Math.random() * 10000;
-  }
-
-  static spawnRandom(index: number, _existing: Humanoid[]): Humanoid {
-    const room = ROOMS[Math.floor(Math.random() * ROOMS.length)]!;
-    const reach = room.size / 2 - SPAWN_MARGIN;
-    return new Humanoid(
-      NAMES[index % NAMES.length]!,
-      PERSONALITIES[index % PERSONALITIES.length]!,
-      room.x + (Math.random() * 2 - 1) * reach,
-      room.y + (Math.random() * 2 - 1) * reach,
-    );
-  }
-
-  static spawnKiller() {
-    const killer = new Humanoid(
-      "Blop",
-      "secret assassin, tries to to lure people away from others and kill them, master manipulator, will carefully weave lies to get out of sticky situations",
-      0,
-      0,
-    );
-    killer.inventory.push("knife");
-    return killer;
   }
 
   isMoving(): boolean {
@@ -160,7 +97,7 @@ export class Humanoid {
   say(text: string, world: Humanoid[], now: number, verb: "say" | "yell") {
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
-    const spoken = speak(this.name, text, verb === "yell" ? 1 : 0.7, {
+    const spoken = speak(text, verb === "yell" ? 1 : 0.7, this.voicePitch, {
       onStart: () => {
         if (!this.dead) this.speech = { text, until: Number.POSITIVE_INFINITY };
       },
@@ -337,19 +274,7 @@ export class Humanoid {
 
     if (this.isMoving()) {
       const effort = this.running ? RUN_MULTIPLIER : 1;
-      if (this.stamina > 0) {
-        this.stamina = Math.max(0, this.stamina - STAMINA_DRAIN * effort * dt);
-      } else {
-        // moving while exhausted grinds down both legs instead
-        this.body["left leg"] = Math.max(
-          0,
-          this.body["left leg"] - EXHAUSTED_LEG_DAMAGE * effort * dt,
-        );
-        this.body["right leg"] = Math.max(
-          0,
-          this.body["right leg"] - EXHAUSTED_LEG_DAMAGE * effort * dt,
-        );
-      }
+      this.stamina = Math.max(0, this.stamina - STAMINA_DRAIN * effort * dt);
     } else {
       this.stamina = Math.min(100, this.stamina + STAMINA_REGEN * dt);
     }

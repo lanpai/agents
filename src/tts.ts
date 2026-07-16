@@ -37,26 +37,19 @@ if ("speechSynthesis" in window) {
   speechSynthesis.addEventListener("voiceschanged", pickVoice);
 }
 
-// stable hash so each name always maps to the same pitch, spread across 0.3-1.8
-function pitchFor(name: string): number {
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  return 0.3 + ((Math.abs(hash) % 100) / 100) * 1.5;
-}
-
 // returns false when the line won't be voiced (unsupported or queue full),
 // so the caller can fall back to a timed speech bubble
 export function speak(
-  name: string,
   text: string,
   volume = 0.8,
+  pitch: number,
   events?: { onStart?: () => void; onEnd?: () => void },
 ): boolean {
   if (!("speechSynthesis" in window) || text.length === 0) return false;
   if (queued >= MAX_QUEUE) return false; // drop speech rather than building a backlog
   const utterance = new SpeechSynthesisUtterance(text);
   if (voice) utterance.voice = voice;
-  utterance.pitch = pitchFor(name);
+  utterance.pitch = pitch;
   utterance.rate = 1.1;
   utterance.volume = volume;
 

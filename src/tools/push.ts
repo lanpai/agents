@@ -29,7 +29,7 @@ export const push: SimTool = {
   name: "push",
   definition: {
     name: "push",
-    description: `Shove a humanoid within arm's reach (${TOUCH_RANGE} units) in a compass direction. Moves them ${PUSH_DISTANCE} units; causes no damage.`,
+    description: `Shove a humanoid within arm's reach (${TOUCH_RANGE} units) in a compass direction. Moves them ${PUSH_DISTANCE} units; does not hurt the target.`,
     input_schema: {
       type: "object",
       properties: {

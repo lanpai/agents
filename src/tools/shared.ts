@@ -4,7 +4,7 @@ import {
   type BodyPart,
   type Humanoid,
 } from "../humanoid";
-import { doorBetween, roomByName, roomOf } from "../locations";
+import { doorBetween, doorLanding, roomByName, roomOf } from "../locations";
 import { logAction } from "../log";
 
 export function reachableTarget(
@@ -47,6 +47,19 @@ export function strike(
     ? (input.body_part as BodyPart)
     : "torso";
   const now = performance.now();
+
+  // everyone else in the room witnesses the strike (before takeDamage, so a
+  // possible death broadcast lands after it in their memory)
+  const room = roomOf(result.target.x, result.target.y);
+  for (const witness of world) {
+    if (witness === humanoid || witness === result.target || witness.dead) continue;
+    if (roomOf(witness.x, witness.y) !== room) continue;
+    witness.remember(
+      `You saw ${humanoid.name} ${verb.past} ${result.target.name}'s ${part}!`,
+    );
+    witness.nextThinkAt = Math.min(witness.nextThinkAt, now + 500);
+  }
+
   result.target.takeDamage(part, damage, world, now);
   humanoid.remember(`You ${verb.past} ${result.target.name}'s ${part}.`);
   if (!result.target.dead) {
@@ -112,10 +125,7 @@ export function moveToRoom(
   }
   humanoid.goToRoom(
     doorBetween(current, targetRoom),
-    {
-      x: targetRoom.x + (Math.random() - 0.5) * targetRoom.size,
-      y: targetRoom.y + (Math.random() - 0.5) * targetRoom.size,
-    },
+    doorLanding(current, targetRoom),
     targetRoom.name,
     running,
   );
