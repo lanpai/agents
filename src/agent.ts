@@ -11,7 +11,7 @@ import {
   describeItemOnGround,
   itemsHeldBy,
   itemsOnFloorIn,
-} from "./items";
+} from "./interactables";
 import { ROOMS, roomOf } from "./locations";
 import { buildTools, executeTool } from "./tools";
 

@@ -1,6 +1,6 @@
 import { BODY_PARTS, Humanoid, type BodyPart } from "./humanoid";
-import { createItem } from "./items";
-import type { Item } from "./items/types";
+import { createItem } from "./interactables";
+import type { Item } from "./interactables/types";
 
 const STORAGE_KEY = "sim.humanoids";
 const ITEMS_KEY = "sim.items";

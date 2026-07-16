@@ -4,7 +4,13 @@ import {
   type BodyPart,
   type Humanoid,
 } from "../humanoid";
-import { doorBetween, doorLanding, roomByName, roomOf } from "../locations";
+import {
+  doorApproach,
+  doorBetween,
+  doorLanding,
+  roomByName,
+  roomOf,
+} from "../locations";
 import { logAction } from "../log";
 
 export function reachableTarget(
@@ -124,8 +130,11 @@ export function moveToRoom(
     return;
   }
   humanoid.goToRoom(
-    doorBetween(current, targetRoom),
-    doorLanding(current, targetRoom),
+    [
+      doorApproach(current, targetRoom),
+      doorBetween(current, targetRoom),
+      doorLanding(current, targetRoom),
+    ],
     targetRoom.name,
     running,
   );

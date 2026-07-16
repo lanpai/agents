@@ -1,5 +1,5 @@
 import { BODY_PARTS, STAB_DAMAGE, TOUCH_RANGE } from "../humanoid";
-import { itemsHeldBy } from "../items";
+import { itemsHeldBy } from "../interactables";
 import { strike } from "./shared";
 import type { SimTool } from "./types";
 

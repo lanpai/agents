@@ -1,4 +1,14 @@
-import { randomPointInRoom, ROOMS, roomOf } from "./locations";
+import {
+  doorApproach,
+  doorBetween,
+  doorThrough,
+  findPath,
+  randomPointInRoom,
+  roomByName,
+  roomCenter,
+  ROOMS,
+  roomOf,
+} from "./locations";
 import { logAction } from "./log";
 import { selected } from "./selection";
 import { speak } from "./tts";
@@ -28,7 +38,7 @@ const HOP_HEIGHT = 5;
 const HOP_MAX_TILT = 0.3;
 const ARRIVE_DISTANCE = 2;
 const FOLLOW_DISTANCE = 20;
-const MEMORY_LIMIT = 8;
+const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
 
@@ -75,6 +85,7 @@ export class Humanoid {
   nextThinkAt: number;
   consolidating = false;
   nextMemoryAt = 0;
+  roomName: string | null = null; // room as of the previous update, for transition detection
 
   constructor(name: string, description: string, x: number, y: number) {
     this.name = name;
@@ -130,15 +141,17 @@ export class Humanoid {
     }
   }
 
-  // two-leg path: through the door, then to the middle of the next room
+  // waypoint path into another room: line up in front of the door, pass
+  // through it, then land inside
   goToRoom(
-    door: { x: number; y: number },
-    center: { x: number; y: number },
+    path: { x: number; y: number }[],
     roomName: string,
     running = false,
   ) {
-    this.target = door;
-    this.pendingPath = [center];
+    const [first, ...rest] = path;
+    if (!first) return;
+    this.target = first;
+    this.pendingPath = rest;
     this.followName = null;
     this.running = running;
     this.remember(
@@ -220,19 +233,45 @@ export class Humanoid {
       null;
     if (this.followName) {
       const followed = world.find((other) => other.name === this.followName);
-      if (!followed) {
+      const myRoom = roomOf(this.x, this.y);
+      const followedRoom = followed
+        ? roomOf(followed.x, followed.y)
+        : null;
+      if (!followed || !followedRoom) {
         this.followName = null;
-      } else if (roomOf(followed.x, followed.y) !== roomOf(this.x, this.y)) {
-        // can't follow through walls
-        this.followName = null;
-        this.remember(`${followed.name} left the room.`);
-        this.nextThinkAt = Math.min(this.nextThinkAt, now + 500);
-      } else {
+      } else if (followedRoom === myRoom) {
         destination = {
           x: followed.x,
           y: followed.y,
           stopDistance: FOLLOW_DISTANCE,
         };
+      } else {
+        // pursue through doors: head for the next room along the path,
+        // re-planning each frame as the followed keeps moving
+        const path = findPath(myRoom, followedRoom);
+        const nextRoom =
+          path && path.length > 1 ? roomByName(path[1]!) : null;
+        if (nextRoom) {
+          const door = doorBetween(myRoom, nextRoom);
+          const approach = doorApproach(myRoom, nextRoom);
+          // line up in front of the door before passing through, so shallow
+          // approach angles don't slide along the wall
+          const lateral =
+            approach.x === door.x
+              ? Math.abs(this.x - door.x)
+              : Math.abs(this.y - door.y);
+          const point =
+            lateral <= 10 ? doorThrough(myRoom, nextRoom) : approach;
+          destination = {
+            x: point.x,
+            y: point.y,
+            stopDistance: ARRIVE_DISTANCE,
+          };
+        } else {
+          this.followName = null;
+          this.remember(`You lost track of ${followed.name}.`);
+          this.nextThinkAt = Math.min(this.nextThinkAt, now + 500);
+        }
       }
     } else if (this.target) {
       destination = { ...this.target, stopDistance: ARRIVE_DISTANCE };
@@ -290,6 +329,34 @@ export class Humanoid {
 
     this.x += this.vx * dt;
     this.y += this.vy * dt;
+
+    // room transitions are witnessed: the room left behind sees where you
+    // went, the room entered sees where you came from
+    const room = roomOf(this.x, this.y);
+    if (this.roomName === null) {
+      this.roomName = room.name; // first update after spawn/load — no crossing
+    } else if (room.name !== this.roomName) {
+      const fromName = this.roomName;
+      this.roomName = room.name;
+      for (const other of world) {
+        if (other === this || other.dead) continue;
+        const otherRoomName = roomOf(other.x, other.y).name;
+        if (otherRoomName === fromName) {
+          other.remember(
+            `You saw ${this.name} leave the ${fromName} toward the ${room.name}.`,
+          );
+        } else if (otherRoomName === room.name) {
+          other.remember(
+            `You saw ${this.name} enter the ${room.name} from the ${fromName}.`,
+          );
+          // someone walking in is worth reacting to
+          other.nextThinkAt = Math.min(
+            other.nextThinkAt,
+            now + HEARD_REACTION_MS + Math.random() * 2000,
+          );
+        }
+      }
+    }
   }
 
   draw(ctx: CanvasRenderingContext2D) {

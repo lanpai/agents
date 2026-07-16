@@ -344,6 +344,39 @@ export function doorBetween(a: Room, b: Room): { x: number; y: number } {
   return { x: (left + right) / 2, y: (top + bottom) / 2 };
 }
 
+// a deterministic point on the door's wall-normal axis, a short depth into
+// the given room (clamped so narrow halls still keep it inside)
+function doorOffset(
+  from: Room,
+  to: Room,
+  into: Room,
+): { x: number; y: number } {
+  const door = doorBetween(from, to);
+  const center = roomCenter(into);
+  const overlapX =
+    Math.min(from.x + from.w, to.x + to.w) - Math.max(from.x, to.x);
+  const overlapY =
+    Math.min(from.y + from.h, to.y + to.h) - Math.max(from.y, to.y);
+  if (overlapX < overlapY) {
+    // vertical shared wall: offset along x
+    const depth = Math.min(24, into.w / 2 - 4);
+    return { x: door.x + Math.sign(center.x - door.x) * depth, y: door.y };
+  }
+  const depth = Math.min(24, into.h / 2 - 4);
+  return { x: door.x, y: door.y + Math.sign(center.y - door.y) * depth };
+}
+
+// staging point in front of a door, inside the room being left — walking here
+// first lines the humanoid up so it never slides along the wall into the gap
+export function doorApproach(from: Room, to: Room): { x: number; y: number } {
+  return doorOffset(from, to, from);
+}
+
+// the mirror point just inside the next room
+export function doorThrough(from: Room, to: Room): { x: number; y: number } {
+  return doorOffset(from, to, to);
+}
+
 // where you end up after stepping through the door from one room to the next:
 // a short random distance inside, with a little sideways scatter
 export function doorLanding(from: Room, to: Room): { x: number; y: number } {

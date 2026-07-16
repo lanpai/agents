@@ -1,4 +1,4 @@
-import { itemsOnFloorIn } from "../items";
+import { itemsOnFloorIn } from "../interactables";
 import { roomOf } from "../locations";
 import { logAction } from "../log";
 import type { SimTool } from "./types";

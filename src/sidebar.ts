@@ -1,6 +1,6 @@
 import { describeBody, describeStatus } from "./agent";
 import { agentCalls } from "./calls";
-import { itemsHeldBy } from "./items";
+import { itemsHeldBy } from "./interactables";
 import { roomOf } from "./locations";
 import { selected } from "./selection";
 

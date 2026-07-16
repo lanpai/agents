@@ -4,8 +4,8 @@ import { eveningWhiskey } from "./characters/eveningWhiskey";
 import { luckyInLove } from "./characters/luckyInLove";
 import { oldFashioned } from "./characters/oldFashioned";
 import { secondOpinion } from "./characters/secondOpinion";
-import { items } from "./items";
-import { Knife } from "./items/knife";
+import { items } from "./interactables";
+import { Knife } from "./interactables/knife";
 import { drawHouse } from "./locations";
 import { drawLog } from "./log";
 import {

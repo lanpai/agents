@@ -1,12 +1,10 @@
 import type { Humanoid } from "../humanoid";
 
-export abstract class Item {
+export abstract class Interactable {
   abstract name: string;
   abstract onGroundDescription: string | ((humanoid: Humanoid) => string);
-  abstract inInventoryDescription: string | ((humanoid: Humanoid) => string);
 
   droppedPosition: { x: number; y: number } | null = null;
-  holder: Humanoid | null = null;
 
   constructor(x: number, y: number) {
     this.droppedPosition = { x, y };
@@ -25,5 +23,15 @@ export abstract class Item {
 
       ctx.restore();
     }
+  }
+}
+
+export abstract class Item extends Interactable {
+  abstract inInventoryDescription: string | ((humanoid: Humanoid) => string);
+
+  holder: Humanoid | null = null;
+
+  constructor(x: number, y: number) {
+    super(x, y);
   }
 }
