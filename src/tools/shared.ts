@@ -1,0 +1,171 @@
+import {
+  BODY_PARTS,
+  TOUCH_RANGE,
+  type BodyPart,
+  type Humanoid,
+} from "../humanoid";
+import { doorBetween, roomByName, roomOf } from "../locations";
+import { logAction } from "../log";
+
+export function reachableTarget(
+  humanoid: Humanoid,
+  world: Humanoid[],
+  name: unknown,
+): { target: Humanoid } | { reason: string } {
+  const target = world.find(
+    (other) => other !== humanoid && other.name === name,
+  );
+  if (!target) return { reason: "you don't see them here" };
+  if (target.dead) return { reason: "they are dead" };
+  if (Math.hypot(target.x - humanoid.x, target.y - humanoid.y) > TOUCH_RANGE) {
+    return { reason: "they are out of arm's reach" };
+  }
+  return { target };
+}
+
+export function strike(
+  humanoid: Humanoid,
+  world: Humanoid[],
+  input: Record<string, unknown>,
+  damage: number,
+  verb: { present: string; past: string },
+) {
+  const result = reachableTarget(humanoid, world, input.target);
+  if ("reason" in result) {
+    humanoid.remember(
+      `You tried to ${verb.present.replace(/e?s$/, "")} ${input.target}, but ${result.reason}.`,
+    );
+    logAction(
+      `${humanoid.name} tries to attack ${input.target} (${result.reason})`,
+      humanoid,
+    );
+    return;
+  }
+  const part = (BODY_PARTS as readonly string[]).includes(
+    String(input.body_part),
+  )
+    ? (input.body_part as BodyPart)
+    : "torso";
+  const now = performance.now();
+  result.target.takeDamage(part, damage, world, now);
+  humanoid.remember(`You ${verb.past} ${result.target.name}'s ${part}.`);
+  if (!result.target.dead) {
+    result.target.remember(`${humanoid.name} ${verb.past} your ${part}!`);
+    result.target.nextThinkAt = Math.min(result.target.nextThinkAt, now + 500);
+  }
+  logAction(
+    `${humanoid.name} ${verb.present} ${result.target.name}'s ${part}`,
+    humanoid,
+    result.target,
+  );
+}
+
+export function follow(
+  humanoid: Humanoid,
+  world: Humanoid[],
+  input: Record<string, unknown>,
+  running: boolean,
+) {
+  const target = world.find(
+    (other) =>
+      other !== humanoid &&
+      other.name === input.name &&
+      roomOf(other.x, other.y) === roomOf(humanoid.x, humanoid.y),
+  );
+  if (target && wouldCreateFollowLoop(humanoid, target, world)) {
+    humanoid.remember(
+      `You tried to follow ${target.name}, but they are already following you — you'd just walk in circles.`,
+    );
+    logAction(
+      `${humanoid.name} tries to follow ${target.name} (follow loop)`,
+      humanoid,
+      target,
+    );
+  } else if (target) {
+    humanoid.followHumanoid(target.name, running);
+    logAction(
+      `${humanoid.name} ${running ? "runs" : "heads"} toward ${target.name}`,
+      humanoid,
+      target,
+    );
+  } else {
+    humanoid.remember(`You looked for ${input.name} but couldn't see them.`);
+    logAction(
+      `${humanoid.name} looks for ${input.name} but can't see them`,
+      humanoid,
+    );
+  }
+}
+
+export function moveToRoom(
+  humanoid: Humanoid,
+  input: Record<string, unknown>,
+  running: boolean,
+) {
+  const current = roomOf(humanoid.x, humanoid.y);
+  const targetRoom = roomByName(String(input.room));
+  if (!targetRoom || !current.doors.includes(targetRoom.name)) {
+    humanoid.remember(
+      `There is no door to ${input.room} from the ${current.name}.`,
+    );
+    return;
+  }
+  humanoid.goToRoom(
+    doorBetween(current, targetRoom),
+    {
+      x: targetRoom.x + (Math.random() - 0.5) * targetRoom.size,
+      y: targetRoom.y + (Math.random() - 0.5) * targetRoom.size,
+    },
+    targetRoom.name,
+    running,
+  );
+  logAction(
+    `${humanoid.name} ${running ? "runs" : "walks"} to the ${targetRoom.name}`,
+    humanoid,
+  );
+}
+
+// everything a humanoid can head to right now: doors out of the room, plus
+// everyone currently in the room
+export function destinations(humanoid: Humanoid, world: Humanoid[]): string[] {
+  const room = roomOf(humanoid.x, humanoid.y);
+  const roommates = world
+    .filter((other) => other !== humanoid && roomOf(other.x, other.y) === room)
+    .map((other) => other.name);
+  return [...room.doors, ...roommates];
+}
+
+export function travelTo(
+  humanoid: Humanoid,
+  world: Humanoid[],
+  destination: string,
+  running: boolean,
+) {
+  const room = roomOf(humanoid.x, humanoid.y);
+  if (room.doors.includes(destination)) {
+    moveToRoom(humanoid, { room: destination }, running);
+  } else {
+    follow(humanoid, world, { name: destination }, running);
+  }
+}
+
+// walks the follow chain from the target; if it leads back to the would-be
+// follower, the new follow would close a cycle (A→B→…→A) and everyone involved
+// would trail each other forever
+function wouldCreateFollowLoop(
+  follower: Humanoid,
+  target: Humanoid,
+  world: Humanoid[],
+): boolean {
+  const seen = new Set<Humanoid>();
+  let current: Humanoid | undefined = target;
+  while (current && !seen.has(current)) {
+    if (current === follower) return true;
+    seen.add(current);
+    const nextName: string | null = current.followName;
+    current = nextName
+      ? world.find((other) => other.name === nextName)
+      : undefined;
+  }
+  return false;
+}

@@ -1,0 +1,21 @@
+{
+  "name": "sim",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "server": "bun --hot server.ts",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "vite": "^8.1.4"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0"
+  }
+}
