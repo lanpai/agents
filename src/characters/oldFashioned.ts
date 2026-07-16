@@ -7,3 +7,5 @@ export const oldFashioned = new Humanoid(
   60,
 );
 oldFashioned.voicePitch = 1.5;
+oldFashioned.longMemory =
+  "You only know the names of the other guests at this manor and would like to learn more about them. You think there is alcohol in the kitchen.";

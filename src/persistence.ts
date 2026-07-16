@@ -19,6 +19,7 @@ type SavedHumanoid = {
   stamina: number;
   dead: boolean;
   running: boolean;
+  voicePitch: number;
 };
 
 type SavedItem = {
@@ -95,6 +96,7 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     stamina: humanoid.stamina,
     dead: humanoid.dead,
     running: humanoid.running,
+    voicePitch: humanoid.voicePitch,
   }));
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -155,6 +157,9 @@ function restore(entry: unknown): Humanoid | null {
     humanoid.stamina = clamp(saved.stamina);
   humanoid.dead = saved.dead === true;
   humanoid.running = saved.running === true;
+  if (typeof saved.voicePitch === "number") {
+    humanoid.voicePitch = saved.voicePitch;
+  }
   return humanoid;
 }
 

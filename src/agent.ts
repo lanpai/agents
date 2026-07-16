@@ -1,11 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { recordAgentCall } from "./calls";
-import {
-  BODY_PARTS,
-  PUNCH_DAMAGE,
-  TOUCH_RANGE,
-  type Humanoid,
-} from "./humanoid";
+import { BODY_PARTS, type Humanoid } from "./humanoid";
 import {
   describeItemInInventory,
   describeItemOnGround,
@@ -39,7 +34,9 @@ Guidelines:
 - Stay consistent with your memory: the people you know, plans you made, threads you left open.
 - Don't stand still forever; if nothing is happening, go find someone.
 - Do not make up observations of the world around you, all you can see is what is prompted to you.
-- Do not pretend to interact with objects you are not explicitly told are visible to you.`;
+- Do not pretend to interact with objects you are not explicitly told are visible to you.
+
+DO NOT PRETEND TO INTERACT WITH OBJECTS THAT YOU DO NOT HAVE A TOOL CALL FOR!`;
 
 const MEMORY_SYSTEM_PROMPT = `You maintain the long-term memory of a humanoid character living in a shared house with other humanoids. You receive the humanoid's identity, their current memory, and a log of new events. Rewrite the memory to fold in the new events, then save it with the update_memory tool.
 
@@ -267,7 +264,7 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   if (humanoid.memory.length === 0) {
     lines.push("Nothing has happened yet.");
   } else {
-    lines.push("The following occured recently (newest first):");
+    lines.push("The following occured recently (oldest first):");
     for (const event of humanoid.memory) lines.push(`- ${event}`);
   }
 

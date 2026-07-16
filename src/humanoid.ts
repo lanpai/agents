@@ -3,14 +3,11 @@ import {
   doorBetween,
   doorThrough,
   findPath,
-  randomPointInRoom,
   roomByName,
-  roomCenter,
-  ROOMS,
   roomOf,
 } from "./locations";
+import { itemsHeldBy } from "./interactables";
 import { logAction } from "./log";
-import { selected } from "./selection";
 import { speak } from "./tts";
 
 export const TOUCH_RANGE = 20;
@@ -203,6 +200,14 @@ export class Humanoid {
     this.pendingPath = [];
     this.followName = null;
     this.speech = null;
+    // whatever they carried spills onto the body
+    for (const item of itemsHeldBy(this)) {
+      item.holder = null;
+      item.droppedPosition = {
+        x: this.x + (Math.random() - 0.5) * 12,
+        y: this.y + (Math.random() - 0.5) * 12,
+      };
+    }
     const myRoom = roomOf(this.x, this.y);
     for (const other of world) {
       if (other === this || other.dead) continue;
@@ -234,9 +239,7 @@ export class Humanoid {
     if (this.followName) {
       const followed = world.find((other) => other.name === this.followName);
       const myRoom = roomOf(this.x, this.y);
-      const followedRoom = followed
-        ? roomOf(followed.x, followed.y)
-        : null;
+      const followedRoom = followed ? roomOf(followed.x, followed.y) : null;
       if (!followed || !followedRoom) {
         this.followName = null;
       } else if (followedRoom === myRoom) {
@@ -249,8 +252,7 @@ export class Humanoid {
         // pursue through doors: head for the next room along the path,
         // re-planning each frame as the followed keeps moving
         const path = findPath(myRoom, followedRoom);
-        const nextRoom =
-          path && path.length > 1 ? roomByName(path[1]!) : null;
+        const nextRoom = path && path.length > 1 ? roomByName(path[1]!) : null;
         if (nextRoom) {
           const door = doorBetween(myRoom, nextRoom);
           const approach = doorApproach(myRoom, nextRoom);

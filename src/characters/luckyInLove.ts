@@ -7,3 +7,5 @@ export const luckyInLove = new Humanoid(
   60,
 );
 luckyInLove.voicePitch = 0.9;
+luckyInLove.longMemory =
+  "You only know the names of the other guests at this manor and would like to learn more about them.";
