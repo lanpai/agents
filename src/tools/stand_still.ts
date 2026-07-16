@@ -11,6 +11,6 @@ export const standStill: SimTool = {
   },
   execute(humanoid) {
     humanoid.standStill();
-    logAction(`${humanoid.name} stops`, humanoid);
+    logAction(`${humanoid.character.name} stops`, humanoid);
   },
 };

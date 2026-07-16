@@ -455,7 +455,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D) {
 
 // greedy word wrap using the canvas's current font; a single word wider than
 // maxWidth still gets its own line (fillText's maxWidth condenses it instead)
-function wrapText(
+export function wrapText(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,

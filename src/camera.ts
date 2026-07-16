@@ -1,6 +1,42 @@
 // zoom = screen px per world px; one world unit = one sprite pixel
 export const camera = { x: 0, y: 0, zoom: 1 };
 
+const FOCUS_ZOOM = 3.5;
+
+// while true (sidebar closed), the camera glides to wherever events happen;
+// manual input takes over momentarily until the next event
+let autoFollow = true;
+// live references (e.g. Humanoids): the target point is re-read every frame,
+// so the camera tracks actors as they move rather than their starting spot
+let focusTarget: { points: { x: number; y: number }[]; zoom: number } | null =
+  null;
+
+export function setCameraAutoFollow(enabled: boolean) {
+  autoFollow = enabled;
+  if (!enabled) focusTarget = null;
+}
+
+export function focusCamera(
+  points: { x: number; y: number }[],
+  zoom = FOCUS_ZOOM,
+) {
+  if (!autoFollow || points.length === 0) return;
+  focusTarget = { points, zoom };
+}
+
+// exponential glide toward the focus target; runs on wall time so the camera
+// keeps moving even while the sim itself is frozen (thinking, speech)
+export function updateCamera(dt: number) {
+  if (!focusTarget) return;
+  const { points, zoom } = focusTarget;
+  const x = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const y = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+  const rate = 1 - Math.exp(-dt * 3);
+  camera.x += (x - camera.x) * rate;
+  camera.y += (y - camera.y) * rate;
+  camera.zoom += (zoom - camera.zoom) * rate;
+}
+
 export function screenToWorld(point: { x: number; y: number }) {
   return {
     x: camera.x + (point.x - window.innerWidth / 2) / camera.zoom,
@@ -43,6 +79,7 @@ export function initCameraControls(canvas: HTMLCanvasElement) {
     "wheel",
     (e) => {
       e.preventDefault();
+      focusTarget = null; // manual input wins until the next event
       if (e.ctrlKey) {
         // trackpad pinch (Chrome/Firefox report it as ctrl+wheel), or explicit ctrl+scroll
         zoomTo(e.clientX, e.clientY, camera.zoom * Math.exp(-e.deltaY * 0.01));
@@ -59,6 +96,7 @@ export function initCameraControls(canvas: HTMLCanvasElement) {
   let gestureStartZoom = 1;
   canvas.addEventListener("gesturestart", ((e: GestureEvent) => {
     e.preventDefault();
+    focusTarget = null;
     gestureStartZoom = camera.zoom;
   }) as EventListener);
   canvas.addEventListener("gesturechange", ((e: GestureEvent) => {
@@ -71,6 +109,7 @@ export function initCameraControls(canvas: HTMLCanvasElement) {
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button !== 1) return;
     e.preventDefault();
+    focusTarget = null;
     canvas.setPointerCapture(e.pointerId);
     panFrom = { x: e.clientX, y: e.clientY };
   });

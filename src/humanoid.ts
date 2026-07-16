@@ -5,10 +5,14 @@ import {
   findPath,
   roomByName,
   roomOf,
+  wrapText,
 } from "./locations";
 import { itemsHeldBy } from "./interactables";
 import { logAction } from "./log";
+import { camera } from "./camera";
 import { speak } from "./tts";
+import { simNow } from "./time";
+import type { Character } from "./characters/types";
 
 export const TOUCH_RANGE = 20;
 export const PUNCH_DAMAGE = 20;
@@ -45,8 +49,8 @@ const sprite = new Image();
 sprite.src = "/humanoid.png";
 
 export class Humanoid {
-  name: string;
-  description: string;
+  character: Character;
+
   x: number;
   y: number;
   vx = 0;
@@ -68,8 +72,6 @@ export class Humanoid {
   dead = false;
   running = false;
 
-  voicePitch = 1.0;
-
   target: { x: number; y: number } | null = null;
   pendingPath: { x: number; y: number }[] = []; // waypoints after the current target
   followName: string | null = null;
@@ -84,13 +86,13 @@ export class Humanoid {
   nextMemoryAt = 0;
   roomName: string | null = null; // room as of the previous update, for transition detection
 
-  constructor(name: string, description: string, x: number, y: number) {
-    this.name = name;
-    this.description = description;
+  constructor(character: Character, x: number, y: number) {
+    this.character = character;
+    this.longMemory = character.initialMemory;
     this.x = x;
     this.y = y;
     // stagger first decisions so 20 agents don't all call the API at once
-    this.nextThinkAt = performance.now() + Math.random() * 10000;
+    this.nextThinkAt = simNow() + Math.random() * 10000;
   }
 
   isMoving(): boolean {
@@ -103,16 +105,24 @@ export class Humanoid {
   }
 
   say(text: string, world: Humanoid[], now: number, verb: "say" | "yell") {
+    // talking roots you in place: any walk or follow in progress is dropped
+    this.standStill();
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
-    const spoken = speak(text, verb === "yell" ? 1 : 0.7, this.voicePitch, {
-      onStart: () => {
-        if (!this.dead) this.speech = { text, until: Number.POSITIVE_INFINITY };
+    const spoken = speak(
+      text,
+      verb === "yell" ? 1 : 0.7,
+      this.character.voicePitch,
+      {
+        onStart: () => {
+          if (!this.dead)
+            this.speech = { text, until: Number.POSITIVE_INFINITY };
+        },
+        onEnd: () => {
+          if (this.speech && this.speech.text === text) this.speech = null;
+        },
       },
-      onEnd: () => {
-        if (this.speech && this.speech.text === text) this.speech = null;
-      },
-    });
+    );
     // no TTS (unsupported browser or full queue): fall back to a timed bubble
     if (!spoken) this.speech = { text, until: now + 4000 + text.length * 60 };
     this.remember(
@@ -128,8 +138,8 @@ export class Humanoid {
       if (!sameRoom && !(verb === "yell" && adjacent)) continue;
       other.remember(
         sameRoom
-          ? `You heard ${this.name} ${verb}: "${text}"`
-          : `You heard ${this.name} yell from the ${myRoom.name}: "${text}"`,
+          ? `You heard ${this.character.name} ${verb}: "${text}"`
+          : `You heard ${this.character.name} yell from the ${myRoom.name}: "${text}"`,
       );
       other.nextThinkAt = Math.min(
         other.nextThinkAt,
@@ -143,6 +153,7 @@ export class Humanoid {
   goToRoom(
     path: { x: number; y: number }[],
     roomName: string,
+    world: Humanoid[],
     running = false,
   ) {
     const [first, ...rest] = path;
@@ -151,19 +162,39 @@ export class Humanoid {
     this.pendingPath = rest;
     this.followName = null;
     this.running = running;
-    this.remember(
-      `You started ${running ? "running" : "walking"} to the ${roomName}.`,
-    );
+    const gait = running ? "running" : "walking";
+    this.remember(`You started ${gait} to the ${roomName}.`);
+    this.announceDeparture(world, `start ${gait} toward the ${roomName}`);
   }
 
-  followHumanoid(name: string, running = false) {
+  followHumanoid(name: string, world: Humanoid[], running = false) {
     this.followName = name;
     this.target = null;
     this.pendingPath = [];
     this.running = running;
-    this.remember(
-      `You started ${running ? "running" : "walking"} toward ${name}.`,
-    );
+    const gait = running ? "running" : "walking";
+    this.remember(`You started ${gait} toward ${name}.`);
+    this.announceDeparture(world, `start ${gait} toward`, name);
+  }
+
+  // setting off is visible: everyone in the room sees where you're headed
+  private announceDeparture(
+    world: Humanoid[],
+    action: string,
+    targetName?: string,
+  ) {
+    const myRoom = roomOf(this.x, this.y);
+    for (const other of world) {
+      if (other === this || other.dead) continue;
+      if (roomOf(other.x, other.y) !== myRoom) continue;
+      const suffix =
+        targetName === undefined
+          ? ""
+          : targetName === other.character.name
+            ? " you"
+            : ` ${targetName}`;
+      other.remember(`You saw ${this.character.name} ${action}${suffix}.`);
+    }
   }
 
   standStill() {
@@ -193,7 +224,7 @@ export class Humanoid {
   die(world: Humanoid[], now: number) {
     if (this.dead) return;
     this.dead = true;
-    logAction(`${this.name} dies!`, this);
+    logAction(`${this.character.name} dies!`, this);
     this.vx = 0;
     this.vy = 0;
     this.target = null;
@@ -212,7 +243,7 @@ export class Humanoid {
     for (const other of world) {
       if (other === this || other.dead) continue;
       if (roomOf(other.x, other.y) === myRoom) {
-        other.remember(`You saw ${this.name} collapse and die.`);
+        other.remember(`You saw ${this.character.name} collapse and die.`);
         other.nextThinkAt = Math.min(other.nextThinkAt, now + 500);
       }
     }
@@ -237,7 +268,9 @@ export class Humanoid {
     let destination: { x: number; y: number; stopDistance: number } | null =
       null;
     if (this.followName) {
-      const followed = world.find((other) => other.name === this.followName);
+      const followed = world.find(
+        (other) => other.character.name === this.followName,
+      );
       const myRoom = roomOf(this.x, this.y);
       const followedRoom = followed ? roomOf(followed.x, followed.y) : null;
       if (!followed || !followedRoom) {
@@ -271,7 +304,7 @@ export class Humanoid {
           };
         } else {
           this.followName = null;
-          this.remember(`You lost track of ${followed.name}.`);
+          this.remember(`You lost track of ${followed.character.name}.`);
           this.nextThinkAt = Math.min(this.nextThinkAt, now + 500);
         }
       }
@@ -345,11 +378,11 @@ export class Humanoid {
         const otherRoomName = roomOf(other.x, other.y).name;
         if (otherRoomName === fromName) {
           other.remember(
-            `You saw ${this.name} leave the ${fromName} toward the ${room.name}.`,
+            `You saw ${this.character.name} leave the ${fromName} toward the ${room.name}.`,
           );
         } else if (otherRoomName === room.name) {
           other.remember(
-            `You saw ${this.name} enter the ${room.name} from the ${fromName}.`,
+            `You saw ${this.character.name} enter the ${room.name} from the ${fromName}.`,
           );
           // someone walking in is worth reacting to
           other.nextThinkAt = Math.min(
@@ -381,34 +414,57 @@ export class Humanoid {
     ctx.restore();
   }
 
-  // name label + speech bubble, drawn in world space so they scale with zoom
-  drawOverlay(ctx: CanvasRenderingContext2D, now: number) {
+  drawUnderlay(ctx: CanvasRenderingContext2D, now: number) {
     ctx.save();
     ctx.translate(this.x, this.y);
 
     ctx.textAlign = "center";
     ctx.font = "9px monospace";
     ctx.fillStyle = "#999";
-    ctx.fillText(this.dead ? `${this.name} (dead)` : this.name, 0, 19);
+    ctx.fillText(
+      this.dead ? `${this.character.name} (dead)` : this.character.name,
+      0,
+      19,
+    );
     if (this.thinking) {
       const dots = ".".repeat(1 + (Math.floor(now / 400) % 3));
-      const nameWidth = ctx.measureText(this.name).width;
+      const nameWidth = ctx.measureText(this.character.name).width;
       ctx.textAlign = "left";
       ctx.fillText(dots, nameWidth / 2 + 2, 19);
       ctx.textAlign = "center";
     }
 
+    ctx.restore();
+  }
+
+  // name label + speech bubble, drawn in world space so they scale with zoom
+  drawOverlay(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+
     if (this.speech) {
+      ctx.textAlign = "center";
       ctx.font = "11px monospace";
-      const width = ctx.measureText(this.speech.text).width;
-      const bubbleTop = -30;
+      // bubbles live in world space: cap their width to what the current
+      // zoom can show on screen, wrapping onto more lines as needed
+      const maxWidth = Math.max(60, (window.innerWidth - 80) / camera.zoom);
+      const lines = wrapText(ctx, this.speech.text, maxWidth);
+      const lineHeight = 13;
+      const width = Math.max(
+        ...lines.map((line) => ctx.measureText(line).width),
+      );
+      const boxHeight = lines.length * lineHeight + 3;
+      // grows upward: the bottom edge stays fixed just above the head
+      const bubbleTop = -14 - boxHeight;
       ctx.fillStyle = "#fff";
       ctx.strokeStyle = "#000";
       ctx.lineWidth = 1;
-      ctx.fillRect(-width / 2 - 5, bubbleTop, width + 10, 16);
-      ctx.strokeRect(-width / 2 - 5, bubbleTop, width + 10, 16);
+      ctx.fillRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
+      ctx.strokeRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
       ctx.fillStyle = "#000";
-      ctx.fillText(this.speech.text, 0, bubbleTop + 12);
+      lines.forEach((line, i) => {
+        ctx.fillText(line, 0, bubbleTop + 12 + i * lineHeight);
+      });
     }
 
     ctx.restore();

@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { simNow } from "./time";
 import { recordAgentCall } from "./calls";
 import { BODY_PARTS, type Humanoid } from "./humanoid";
 import {
@@ -65,6 +66,13 @@ const MEMORY_TOOL: Anthropic.Tool = {
 let inFlight = 0;
 let memoryInFlight = 0;
 
+// the sim pauses while a decision is in flight, so the world an agent acted
+// on is the same world its actions land in (memory consolidation doesn't
+// pause anything — it only rewrites private state)
+export function isThinking(): boolean {
+  return inFlight > 0;
+}
+
 // oldest-due first so humanoids late in the array can't be starved of slots
 export function scheduleThinking(humanoids: Humanoid[], now: number) {
   if (inFlight >= MAX_CONCURRENT) return;
@@ -80,7 +88,7 @@ export function scheduleThinking(humanoids: Humanoid[], now: number) {
     inFlight++;
     decide(humanoid, humanoids)
       .catch(() => {
-        humanoid.nextThinkAt = performance.now() + ERROR_BACKOFF_MS;
+        humanoid.nextThinkAt = simNow() + ERROR_BACKOFF_MS;
       })
       .finally(() => {
         humanoid.thinking = false;
@@ -105,7 +113,7 @@ export function maybeUpdateMemory(humanoid: Humanoid, now: number) {
     .finally(() => {
       humanoid.consolidating = false;
       memoryInFlight--;
-      humanoid.nextMemoryAt = performance.now() + MEMORY_COOLDOWN_MS;
+      humanoid.nextMemoryAt = simNow() + MEMORY_COOLDOWN_MS;
     });
 }
 
@@ -115,7 +123,7 @@ async function updateMemory(humanoid: Humanoid) {
   const events = humanoid.unconsolidated.slice(0, batchSize);
 
   const prompt = [
-    `The humanoid ${humanoid.name} is prompted with "${humanoid.description}"`,
+    `The humanoid ${humanoid.character.name} is prompted with "${humanoid.character.description}"`,
     "",
     "Current memory:",
     humanoid.longMemory || "(no memory yet)",
@@ -127,7 +135,7 @@ async function updateMemory(humanoid: Humanoid) {
   ].join("\n");
 
   const record = recordAgentCall({
-    humanoid: humanoid.name,
+    humanoid: humanoid.character.name,
     kind: "memory",
     messages: prompt,
     tools: [MEMORY_TOOL.name],
@@ -170,7 +178,7 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
   const observation = buildObservation(humanoid, world);
   const tools = buildTools(humanoid, world);
   const record = recordAgentCall({
-    humanoid: humanoid.name,
+    humanoid: humanoid.character.name,
     kind: "decision",
     messages: observation,
     tools: tools.map((tool) => tool.name),
@@ -198,7 +206,7 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
     // set the cadence before executing: tools may pull nextThinkAt closer
     // (e.g. find_path schedules an immediate follow-up), which must survive
     humanoid.nextThinkAt =
-      performance.now() + THINK_INTERVAL_MS + Math.random() * THINK_JITTER_MS;
+      simNow() + THINK_INTERVAL_MS + Math.random() * THINK_JITTER_MS;
     for (const block of message.content) {
       if (block.type === "tool_use") {
         executeTool(
@@ -219,8 +227,8 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
 function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   const room = roomOf(humanoid.x, humanoid.y);
   const lines = [
-    `Your name is ${humanoid.name}.`,
-    humanoid.description,
+    `Your name is ${humanoid.character.name}.`,
+    humanoid.character.description,
     "",
     describeStatus(humanoid),
     `You see doors leading to ${room.doors.map((door) => ROOMS.find((room) => room.name === door)?.promptName).join(", ")}.`,
@@ -244,7 +252,7 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
     lines.push("You see no one else in the room.");
   } else {
     for (const other of visible) {
-      let entry = `You see ${other.name} ${
+      let entry = `You see ${other.character.name} ${
         other.dead
           ? "lying dead on the ground"
           : other.isMoving()
@@ -252,7 +260,7 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
             : "standing still"
       } in the room with you`;
       if (other.speech) entry += `, saying "${other.speech.text}"`;
-      lines.push(entry, "");
+      lines.push(entry, other.character.describeHumanoid(other, humanoid), "");
     }
   }
 

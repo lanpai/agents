@@ -1,10 +1,17 @@
 import { describeBody, describeStatus } from "./agent";
 import { agentCalls } from "./calls";
+import { setCameraAutoFollow } from "./camera";
 import { itemsHeldBy } from "./interactables";
 import { roomOf } from "./locations";
 import { selected } from "./selection";
 
 const REFRESH_MS = 250;
+
+let visible = false;
+
+export function isSidebarOpen(): boolean {
+  return visible;
+}
 
 export function initSidebar(options: {
   isPaused: () => boolean;
@@ -70,12 +77,13 @@ export function initSidebar(options: {
   );
   document.body.appendChild(sidebar);
 
-  let visible = false;
   window.addEventListener("keydown", (e) => {
     if (e.key !== "Tab") return;
     e.preventDefault();
     visible = !visible;
     sidebar.style.display = visible ? "block" : "none";
+    // sidebar open = manual camera; closed = camera follows the action
+    setCameraAutoFollow(!visible);
   });
 
   // keep <details> expansion across re-renders
@@ -101,7 +109,7 @@ export function initSidebar(options: {
           .map((item) => item.name)
           .join(", ") || "nothing";
       const lines = [
-        `<strong>${esc(humanoid.name)}</strong> — ${esc(roomOf(humanoid.x, humanoid.y).name)}${humanoid.dead ? " (dead)" : ""}`,
+        `<strong>${esc(humanoid.character.name)}</strong> — ${esc(roomOf(humanoid.x, humanoid.y).name)}${humanoid.dead ? " (dead)" : ""}`,
         `${esc(describeStatus(humanoid))} · stamina ${Math.round(humanoid.stamina)}/100`,
         esc(describeBody(humanoid)),
         `carrying: ${esc(carrying)}`,

@@ -1,9 +1,10 @@
-import { maybeUpdateMemory, scheduleThinking } from "./agent";
-import { camera, initCameraControls } from "./camera";
+import { isThinking, maybeUpdateMemory, scheduleThinking } from "./agent";
+import { camera, initCameraControls, updateCamera } from "./camera";
 import { eveningWhiskey } from "./characters/eveningWhiskey";
 import { luckyInLove } from "./characters/luckyInLove";
 import { oldFashioned } from "./characters/oldFashioned";
 import { secondOpinion } from "./characters/secondOpinion";
+import { Humanoid } from "./humanoid";
 import { items } from "./interactables";
 import { Knife } from "./interactables/knife";
 import { drawHouse } from "./locations";
@@ -15,7 +16,8 @@ import {
   saveItems,
 } from "./persistence";
 import { drawSelectionBox, initSelection, selected } from "./selection";
-import { initSidebar } from "./sidebar";
+import { initSidebar, isSidebarOpen } from "./sidebar";
+import { advanceSimTime, simNow } from "./time";
 import { isSpeaking, pauseSpeech, resumeSpeech } from "./tts";
 
 const HUMANOID_COUNT = 5;
@@ -27,10 +29,10 @@ initCameraControls(canvas);
 
 const humanoids = loadHumanoids().slice(0, HUMANOID_COUNT);
 if (humanoids.length === 0) {
-  humanoids.push(eveningWhiskey);
-  humanoids.push(secondOpinion);
-  humanoids.push(luckyInLove);
-  humanoids.push(oldFashioned);
+  humanoids.push(new Humanoid(eveningWhiskey, 20, 0));
+  humanoids.push(new Humanoid(secondOpinion, -220, -20));
+  humanoids.push(new Humanoid(luckyInLove, -190, 60));
+  humanoids.push(new Humanoid(oldFashioned, -220, 60));
 }
 
 items.push(...loadItems(humanoids));
@@ -84,28 +86,34 @@ function draw(now: number) {
 
   // painter's order: lower on screen draws in front
   const sortedHumanoids = [...humanoids].sort((a, b) => a.y - b.y);
+  for (const humanoid of sortedHumanoids) humanoid.drawUnderlay(ctx, now);
   for (const humanoid of sortedHumanoids) humanoid.draw(ctx);
-  for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx, now);
 
   for (const item of items) item.draw(ctx);
+
+  for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx);
 
   // screen-space UI
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawSelectionBox(ctx);
-  drawLog(ctx, selected);
+  if (isSidebarOpen()) drawLog(ctx, selected);
 }
 
 let last = performance.now();
-function frame(now: number) {
-  const dt = Math.min((now - last) / 1000, 0.05);
-  last = now;
-  // the world holds still while paused or while a voice is speaking
-  if (!paused && !isSpeaking()) {
+function frame(wallNow: number) {
+  const dt = Math.min((wallNow - last) / 1000, 0.05);
+  last = wallNow;
+  // the world holds still — and sim time itself freezes — while paused, while
+  // a voice is speaking, and while a humanoid is deciding what to do
+  if (!paused && !isSpeaking() && !isThinking()) {
+    advanceSimTime(dt * 1000);
+    const now = simNow();
     for (const humanoid of humanoids) humanoid.update(dt, now, humanoids);
     scheduleThinking(humanoids, now);
     for (const humanoid of humanoids) maybeUpdateMemory(humanoid, now);
   }
-  draw(now);
+  updateCamera(dt); // wall-time: the camera glides even while the sim is frozen
+  draw(wallNow);
   requestAnimationFrame(frame);
 }
 

@@ -1,4 +1,4 @@
-import { logAction } from "../log";
+import { logQuietAction } from "../log";
 import type { SimTool } from "./types";
 
 export const wait: SimTool = {
@@ -10,6 +10,6 @@ export const wait: SimTool = {
     input_schema: { type: "object", properties: {}, required: [] },
   },
   execute(humanoid) {
-    logAction(`${humanoid.name} waits`, humanoid);
+    logQuietAction(`${humanoid.character.name} waits`, humanoid);
   },
 };

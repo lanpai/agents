@@ -1,3 +1,4 @@
+import { characterByName } from "./characters";
 import { BODY_PARTS, Humanoid, type BodyPart } from "./humanoid";
 import { createItem } from "./interactables";
 import type { Item } from "./interactables/types";
@@ -6,8 +7,9 @@ const STORAGE_KEY = "sim.humanoids";
 const ITEMS_KEY = "sim.items";
 
 type SavedHumanoid = {
-  name: string;
-  description: string;
+  // characters carry functions, so only the name is saved and the full
+  // Character is re-resolved from the registry on load
+  character: string;
   x: number;
   y: number;
   target: { x: number; y: number } | null;
@@ -19,7 +21,6 @@ type SavedHumanoid = {
   stamina: number;
   dead: boolean;
   running: boolean;
-  voicePitch: number;
 };
 
 type SavedItem = {
@@ -35,7 +36,7 @@ export function saveItems(items: Item[]) {
     // for held items, remember the holder's position as a drop fallback
     x: item.droppedPosition?.x ?? item.holder?.x ?? 0,
     y: item.droppedPosition?.y ?? item.holder?.y ?? 0,
-    holder: item.holder?.name ?? null,
+    holder: item.holder?.character.name ?? null,
   }));
   try {
     localStorage.setItem(ITEMS_KEY, JSON.stringify(data));
@@ -65,7 +66,7 @@ export function loadItems(humanoids: Humanoid[]): Item[] {
       if (!item) continue;
       if (typeof saved.holder === "string") {
         const holder = humanoids.find(
-          (humanoid) => humanoid.name === saved.holder,
+          (humanoid) => humanoid.character.name === saved.holder,
         );
         // a holder that no longer exists leaves the item dropped at the saved spot
         if (holder) {
@@ -83,8 +84,7 @@ export function loadItems(humanoids: Humanoid[]): Item[] {
 
 export function saveHumanoids(humanoids: Humanoid[]) {
   const data: SavedHumanoid[] = humanoids.map((humanoid) => ({
-    name: humanoid.name,
-    description: humanoid.description,
+    character: humanoid.character.name,
     x: humanoid.x,
     y: humanoid.y,
     target: humanoid.target,
@@ -96,7 +96,6 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     stamina: humanoid.stamina,
     dead: humanoid.dead,
     running: humanoid.running,
-    voicePitch: humanoid.voicePitch,
   }));
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -123,19 +122,16 @@ function restore(entry: unknown): Humanoid | null {
   const saved = entry as Partial<SavedHumanoid> | null;
   if (
     !saved ||
-    typeof saved.name !== "string" ||
-    typeof saved.description !== "string" ||
+    typeof saved.character !== "string" ||
     typeof saved.x !== "number" ||
     typeof saved.y !== "number"
   ) {
     return null;
   }
-  const humanoid = new Humanoid(
-    saved.name,
-    saved.description,
-    saved.x,
-    saved.y,
-  );
+  // a saved humanoid whose character no longer exists can't be reconstructed
+  const character = characterByName(saved.character);
+  if (!character) return null;
+  const humanoid = new Humanoid(character, saved.x, saved.y);
   if (
     saved.target &&
     typeof saved.target.x === "number" &&
@@ -157,9 +153,6 @@ function restore(entry: unknown): Humanoid | null {
     humanoid.stamina = clamp(saved.stamina);
   humanoid.dead = saved.dead === true;
   humanoid.running = saved.running === true;
-  if (typeof saved.voicePitch === "number") {
-    humanoid.voicePitch = saved.voicePitch;
-  }
   return humanoid;
 }
 

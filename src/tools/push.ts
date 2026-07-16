@@ -1,3 +1,4 @@
+import { simNow } from "../time";
 import { PUSH_DISTANCE, TOUCH_RANGE } from "../humanoid";
 import { logAction } from "../log";
 import { reachableTarget } from "./shared";
@@ -50,7 +51,7 @@ export const push: SimTool = {
         `You tried to push ${input.target}, but ${result.reason}.`,
       );
       logAction(
-        `${humanoid.name} tries to push ${input.target} (${result.reason})`,
+        `${humanoid.character.name} tries to push ${input.target} (${result.reason})`,
         humanoid,
       );
       return;
@@ -59,14 +60,14 @@ export const push: SimTool = {
     const word = DIRECTION_WORDS[String(input.direction).toUpperCase()]!;
     result.target.x += direction[0] * PUSH_DISTANCE;
     result.target.y += direction[1] * PUSH_DISTANCE;
-    humanoid.remember(`You pushed ${result.target.name} ${word}.`);
-    result.target.remember(`${humanoid.name} pushed you ${word}!`);
+    humanoid.remember(`You pushed ${result.target.character.name} ${word}.`);
+    result.target.remember(`${humanoid.character.name} pushed you ${word}!`);
     result.target.nextThinkAt = Math.min(
       result.target.nextThinkAt,
-      performance.now() + 500,
+      simNow() + 500,
     );
     logAction(
-      `${humanoid.name} pushes ${result.target.name} ${word}`,
+      `${humanoid.character.name} pushes ${result.target.character.name} ${word}`,
       humanoid,
       result.target,
     );

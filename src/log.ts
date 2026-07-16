@@ -1,3 +1,4 @@
+import { focusCamera } from "./camera";
 import type { Humanoid } from "./humanoid";
 
 const MAX_ENTRIES = 100;
@@ -9,6 +10,16 @@ type Entry = { text: string; actors: Humanoid[] };
 const entries: Entry[] = [];
 
 export function logAction(text: string, ...actors: Humanoid[]) {
+  entries.push({ text, actors });
+  if (entries.length > MAX_ENTRIES) entries.shift();
+  // every logged action is "something happening" — glide the camera there,
+  // passing the actors themselves so it keeps tracking them as they move
+  // (no-op while the sidebar has the camera in manual mode)
+  focusCamera(actors);
+}
+
+// logged, but not worth pointing the camera at (e.g. someone deciding to wait)
+export function logQuietAction(text: string, ...actors: Humanoid[]) {
   entries.push({ text, actors });
   if (entries.length > MAX_ENTRIES) entries.shift();
 }
