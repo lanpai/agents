@@ -27,7 +27,7 @@ const MEMORY_COOLDOWN_MS = 30000;
 
 const SYSTEM_PROMPT = `You control one humanoid character living inside a shared house with other humanoids. There is nothing outside the house; socializing in and moving between its rooms is life.
 
-Each turn you receive an observation: where you are, your long-term memory, who you can see nearby, and a log of recent events (things you did, things you heard). Choose your next action with the provided tools. You may combine speaking with a movement action in the same turn.
+Each turn you receive your long-term memory, then recent events in order (things you did, things you heard and saw), and finally an observation of the present moment. Choose your next action with the provided tools. You may combine speaking with a movement action in the same turn.
 
 Guidelines:
 - Stay in character with your character description. Wander, meet others, chat, form little social moments.
@@ -36,7 +36,8 @@ Guidelines:
 - Do not make up observations of the world around you, all you can see is what is prompted to you.
 - Do not pretend to interact with objects you are not explicitly told are visible to you.
 
-DO NOT PRETEND TO INTERACT WITH OBJECTS THAT YOU DO NOT HAVE A TOOL CALL FOR!`;
+DO NOT PRETEND TO INTERACT WITH OBJECTS THAT YOU DO NOT HAVE A TOOL CALL FOR!
+DO NOT PRETEND TO BE CARRYING OBJECTS THAT YOU ARE NOT TOLD ARE ON YOU!`;
 
 const MEMORY_SYSTEM_PROMPT = `You maintain the long-term memory of a humanoid character living in a shared house with other humanoids. You receive the humanoid's identity, their current memory, and a log of new events. Rewrite the memory to fold in the new events, then save it with the update_memory tool.
 
@@ -127,22 +128,24 @@ async function updateMemory(humanoid: Humanoid) {
   const batchSize = humanoid.unconsolidated.length;
   const events = humanoid.unconsolidated.slice(0, batchSize);
 
-  const prompt = [
-    `The humanoid ${humanoid.character.name} is prompted with "${humanoid.character.description}"`,
-    "",
-    "Current memory:",
-    humanoid.longMemory || "(no memory yet)",
-    "",
-    "New events (oldest first):",
-    ...events.map((event) => `- ${event}`),
-    "",
-    "Rewrite the memory to fold in these events.",
-  ].join("\n");
+  const messages: { role: "user"; content: string }[] = [
+    {
+      role: "user",
+      content: `The humanoid ${humanoid.character.name} is prompted with "${humanoid.character.description}"`,
+    },
+    {
+      role: "user",
+      content: `Current memory:\n${humanoid.longMemory || "(no memory yet)"}`,
+    },
+    // each new event rides as its own message, oldest first
+    ...events.map((event) => ({ role: "user" as const, content: event })),
+    { role: "user", content: "Rewrite the memory to fold in these events." },
+  ];
 
   const record = recordAgentCall({
     humanoid: humanoid.character.name,
     kind: "memory",
-    messages: prompt,
+    messages: messages.map((message) => message.content).join("\n---\n"),
     tools: [MEMORY_TOOL.name],
   });
   try {
@@ -152,7 +155,7 @@ async function updateMemory(humanoid: Humanoid) {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
         system: MEMORY_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: prompt }],
+        messages,
         tools: [MEMORY_TOOL],
         tool_choice: { type: "tool", name: "update_memory" },
         max_tokens: 500,
@@ -180,12 +183,16 @@ async function updateMemory(humanoid: Humanoid) {
 }
 
 async function decide(humanoid: Humanoid, world: Humanoid[]) {
-  const observation = buildObservation(humanoid, world);
+  const system = buildSystemPrompt(humanoid);
+  const messages = buildMessages(humanoid, world);
   const tools = buildTools(humanoid, world);
   const record = recordAgentCall({
     humanoid: humanoid.character.name,
     kind: "decision",
-    messages: observation,
+    messages: [
+      `[system]\n${system}`,
+      ...messages.map((message) => message.content),
+    ].join("\n---\n"),
     tools: tools.map((tool) => tool.name),
   });
   try {
@@ -194,8 +201,8 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
       headers: { "content-type": "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       body: JSON.stringify({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: observation }],
+        system,
+        messages,
         tools,
       }),
     });
@@ -229,12 +236,44 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
   }
 }
 
+// the stable frame: world rules plus who this humanoid is
+function buildSystemPrompt(humanoid: Humanoid): string {
+  return [
+    SYSTEM_PROMPT,
+    "",
+    `Your name is ${humanoid.character.name}.`,
+    humanoid.character.description,
+  ].join("\n");
+}
+
+// long-term memory first, then each recent event as its own message, then
+// the current-state observation asking for an action
+function buildMessages(
+  humanoid: Humanoid,
+  world: Humanoid[],
+): { role: "user"; content: string }[] {
+  const messages: { role: "user"; content: string }[] = [];
+
+  if (humanoid.longMemory) {
+    messages.push({ role: "user", content: humanoid.longMemory });
+  }
+
+  for (const event of humanoid.memory) {
+    messages.push({ role: "user", content: event });
+  }
+
+  messages.push({
+    role: "user",
+    content: buildObservation(humanoid, world),
+  });
+
+  return messages;
+}
+
+// a snapshot of the present moment: surroundings, self-state, and the ask
 function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   const room = roomOf(humanoid.x, humanoid.y);
   const lines = [
-    `Your name is ${humanoid.character.name}.`,
-    humanoid.character.description,
-    "",
     describeMovement(humanoid),
     `You see doors leading to ${room.doors.map((door) => ROOMS.find((room) => room.name === door)?.promptName).join(", ")}.`,
     describeBody(humanoid),
@@ -246,12 +285,12 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   }
 
   const heldItems = humanoid.carrying;
-  for (const heldItem of heldItems) {
-    lines.push("", describeItemInInventory(heldItem, humanoid));
-  }
-
-  if (humanoid.longMemory) {
-    lines.push("", humanoid.longMemory);
+  if (heldItems.length === 0) {
+    lines.push("", "You aren't carrying anything on you.");
+  } else {
+    for (const heldItem of heldItems) {
+      lines.push("", describeItemInInventory(heldItem, humanoid));
+    }
   }
 
   const visible = world.filter(
@@ -282,11 +321,6 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
 
   for (const interactable of room.interactables) {
     lines.push("", describeInteractableOnGround(interactable, humanoid));
-  }
-
-  if (humanoid.memory.length > 0) {
-    lines.push("", "The following occured recently (oldest first):");
-    for (const event of humanoid.memory) lines.push(`- ${event}`);
   }
 
   lines.push("", "Choose your next action.");

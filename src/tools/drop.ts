@@ -9,7 +9,8 @@ export const drop: SimTool = {
   definition: (humanoid) => {
     return {
       name: "drop",
-      description: "Place down an item you are carrying on you.",
+      description:
+        "Place down an item you are carrying on you. This can be used to give people things you are carrying.",
       input_schema: {
         type: "object",
         properties: {

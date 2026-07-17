@@ -151,6 +151,10 @@ export class Humanoid {
   }
 
   say(text: string, world: Humanoid[], now: number, verb: "say" | "yell") {
+    // trim quotes if fully wrapped (avoids trimming text that starts of ends with quoted text)
+    if (text.startsWith('"') && text.endsWith('"'))
+      text = text.substring(1, text.length - 1);
+
     // talking roots you in place: any walk or follow in progress is dropped
     this.standStill();
     // the bubble tracks the voice: it appears when the line starts playing

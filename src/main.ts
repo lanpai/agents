@@ -16,7 +16,7 @@ import {
   saveItems,
 } from "./persistence";
 import { drawSelectionBox, initSelection, selected } from "./selection";
-import { initSidebar } from "./sidebar";
+import { initSidebar, isSidebarOpen } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
 import { pauseSpeech, resumeSpeech } from "./tts";
 
@@ -99,7 +99,7 @@ function draw(now: number) {
   // screen-space UI
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawSelectionBox(ctx);
-  drawLog(ctx, selected);
+  if (isSidebarOpen()) drawLog(ctx, selected);
 }
 
 let last = performance.now();
