@@ -9,7 +9,12 @@ import {
 } from "./locations";
 import type { Item } from "./interactables/types";
 import { logAction } from "./log";
-import { camera } from "./camera";
+import {
+  camera,
+  focusCamera,
+  focusCameraOnSpeaker,
+  isCameraAutoFollowing,
+} from "./camera";
 import { speak } from "./tts";
 import { simNow } from "./time";
 import type { Character } from "./characters/types";
@@ -49,6 +54,7 @@ const HOP_HEIGHT = 5;
 const HOP_MAX_TILT = 0.3;
 const ARRIVE_DISTANCE = 2;
 const FOLLOW_DISTANCE = 20;
+const PERSONAL_SPACE = 14; // a destination this close to someone standing there is taken
 const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
@@ -72,16 +78,84 @@ export function broadcastToRoom(
 }
 
 // rooms where time currently stands still: any room holding a humanoid who
-// is mid-decision or whose voice line is queued/playing
+// is mid-decision, whose voice line is queued/playing, or whose emote the
+// camera hasn't witnessed yet
 export function frozenRooms(world: Humanoid[]) {
   const rooms = new Set<ReturnType<typeof roomOf>>();
   for (const humanoid of world) {
     if (humanoid.dead) continue;
-    if (humanoid.thinking || humanoid.speaking) {
+    if (humanoid.thinking || humanoid.speaking || humanoid.emoteHold) {
       rooms.add(roomOf(humanoid.x, humanoid.y));
     }
   }
   return rooms;
+}
+
+// an emote is a beat the viewer should witness: the actor's room stays frozen
+// until the camera has watched them for a moment. Ticks on wall time (the
+// camera glides on wall time too), capped so a shot that never arrives — an
+// overwritten cut, a camera parked elsewhere — can't freeze the room forever
+const EMOTE_SEEN_SECONDS = 0.5;
+const EMOTE_HOLD_MAX_SECONDS = 5;
+const EMOTE_SEEN_DISTANCE = 40; // camera center this close = the actor is framed
+
+export function updateEmoteHolds(world: Humanoid[], dt: number) {
+  for (const humanoid of world) {
+    const hold = humanoid.emoteHold;
+    if (!hold) continue;
+    hold.heldFor += dt;
+    // with the camera in manual mode there is no shot to wait for — the hold
+    // just runs its second so the beat still registers before the room resumes
+    const framed =
+      !isCameraAutoFollowing() ||
+      Math.hypot(camera.x - humanoid.x, camera.y - humanoid.y) <
+        EMOTE_SEEN_DISTANCE;
+    if (framed) hold.seenFor += dt;
+    if (
+      hold.seenFor >= EMOTE_SEEN_SECONDS ||
+      hold.heldFor >= EMOTE_HOLD_MAX_SECONDS
+    ) {
+      humanoid.emoteHold = null;
+      humanoid.emote = null; // the bubble leaves together with the shot
+    }
+  }
+}
+
+// where to actually stop when walking to a point someone is already standing
+// on: the first spot on a ring of nearby points that is open and still inside
+// the same room — or the original point when it's free or everywhere nearby
+// is just as crowded
+function openSpotNear(
+  spot: { x: number; y: number },
+  self: Humanoid,
+  world: Humanoid[],
+): { x: number; y: number } {
+  // moving humanoids don't claim a spot — they're about to vacate it
+  const taken = (x: number, y: number) =>
+    world.some(
+      (other) =>
+        other !== self &&
+        !other.isMoving() &&
+        Math.hypot(other.x - x, other.y - y) < PERSONAL_SPACE,
+    );
+  if (!taken(spot.x, spot.y)) return spot;
+  const room = roomOf(spot.x, spot.y);
+  for (let radius = 20; radius <= 60; radius += 20) {
+    for (let step = 0; step < 8; step++) {
+      const angle = (step / 8) * Math.PI * 2;
+      const x = spot.x + Math.cos(angle) * radius;
+      const y = spot.y + Math.sin(angle) * radius;
+      // containment check, not roomOf — its nearest-room fallback would
+      // accept points outside the house; 12 matches doorLanding's wall margin
+      const inRoom =
+        x >= room.x + 12 &&
+        x <= room.x + room.w - 12 &&
+        y >= room.y + 12 &&
+        y <= room.y + room.h - 12;
+      if (inRoom && !taken(x, y)) return { x, y };
+    }
+  }
+  return spot;
 }
 
 export class Humanoid {
@@ -113,7 +187,9 @@ export class Humanoid {
   pendingPath: { x: number; y: number }[] = []; // waypoints after the current target
   followName: string | null = null;
   speech: { text: string; until: number } | null = null;
-  emote: { text: string; until: number } | null = null; // *action* bubble
+  emote: { text: string } | null = null; // *action* bubble, lives as long as its hold
+  // freezes the room until the camera has watched the emote (wall-time seconds)
+  emoteHold: { seenFor: number; heldFor: number } | null = null;
   memory: string[] = [];
   longMemory = "";
   unconsolidated: string[] = []; // events not yet folded into longMemory
@@ -140,9 +216,12 @@ export class Humanoid {
     return this.vx !== 0 || this.vy !== 0;
   }
 
-  // a small *action* bubble over the head for non-speech, non-movement acts
+  // a small *action* bubble over the head for non-speech, non-movement acts;
+  // like talking it freezes the room, and both the freeze and the bubble last
+  // until the camera has seen the act
   showEmote(text: string) {
-    this.emote = { text, until: simNow() + 3000 + text.length * 50 };
+    this.emote = { text };
+    this.emoteHold = { seenFor: 0, heldFor: 0 };
   }
 
   // both legs at 100% -> 1, one dead leg -> 0.5, both dead -> 0
@@ -165,8 +244,12 @@ export class Humanoid {
       this.character.voicePitch,
       {
         onStart: () => {
-          if (!this.dead)
-            this.speech = { text, until: Number.POSITIVE_INFINITY };
+          if (this.dead) return;
+          this.speech = { text, until: Number.POSITIVE_INFINITY };
+          // the camera cuts when the line becomes audible, not when it was
+          // queued: with lines queued from different rooms, play order —
+          // not decision order — picks who is on screen
+          focusCameraOnSpeaker(this);
         },
         onEnd: () => {
           if (this.speech && this.speech.text === text) this.speech = null;
@@ -175,8 +258,12 @@ export class Humanoid {
       },
     );
     if (spoken) this.speaking = true; // freezes this room until the line ends
-    // no TTS (unsupported browser or full queue): fall back to a timed bubble
-    if (!spoken) this.speech = { text, until: now + 4000 + text.length * 60 };
+    // no TTS (unsupported browser or full queue): fall back to a timed bubble,
+    // and focus now since there is no utterance start to cut on
+    if (!spoken) {
+      this.speech = { text, until: now + 4000 + text.length * 60 };
+      focusCamera([this]);
+    }
     this.remember(
       verb === "yell" ? `You yelled: "${text}"` : `You said: "${text}"`,
     );
@@ -301,7 +388,6 @@ export class Humanoid {
 
   update(dt: number, now: number, world: Humanoid[]) {
     if (this.speech && now > this.speech.until) this.speech = null;
-    if (this.emote && now > this.emote.until) this.emote = null;
     if (this.dead) {
       this.vx = 0;
       this.vy = 0;
@@ -360,6 +446,12 @@ export class Humanoid {
         }
       }
     } else if (this.target) {
+      // don't stop on top of someone standing at the destination — settle on
+      // an open spot nearby, re-checked each frame in case the spot gets
+      // taken mid-walk (door waypoints are exempt: those are walked through)
+      if (this.pendingPath.length === 0) {
+        this.target = openSpotNear(this.target, this, world);
+      }
       destination = { ...this.target, stopDistance: ARRIVE_DISTANCE };
     }
 

@@ -25,7 +25,7 @@ const MAX_MEMORY_CONCURRENT = 2;
 const MEMORY_EVENT_THRESHOLD = 6;
 const MEMORY_COOLDOWN_MS = 30000;
 
-const SYSTEM_PROMPT = `You control one humanoid character living inside a shared house with other humanoids. There is nothing outside the house; socializing in and moving between its rooms is life.
+const SYSTEM_PROMPT = `You control one character living inside a manor with other characters. There is nothing outside the house; socializing in and moving between its rooms is life.
 
 Each turn you receive your long-term memory, then recent events in order (things you did, things you heard and saw), and finally an observation of the present moment. Choose your next action with the provided tools. You may combine speaking with a movement action in the same turn.
 
@@ -36,22 +36,27 @@ Guidelines:
 - Do not make up observations of the world around you, all you can see is what is prompted to you.
 - Do not pretend to interact with objects you are not explicitly told are visible to you.
 
+DO NOT MAKE UP ANY LOCATIONS IN THE MANOR! THE ROOMS IN THE MANOR ARE AS FOLLOWS:
+${ROOMS.map((room) => `- ${room.promptName}`).join("\n")}
+
 DO NOT PRETEND TO INTERACT WITH OBJECTS THAT YOU DO NOT HAVE A TOOL CALL FOR!
 DO NOT PRETEND TO BE CARRYING OBJECTS THAT YOU ARE NOT TOLD ARE ON YOU!
-DO NOT MAKE UP BACKGROUNDS FOR OTHERS! YOU WILL BE EXPLICITLY TOLD ABOUT NEW THINGS OR OTHERS WILL REVEAL THEIR OWN BACKGROUNDS TO YOU!`;
+DO NOT MAKE UP ANY NEW NAMES OR BRING UP ANY NEW CHARACTERS UNLESS YOU ARE EXPLICITLY TOLD TO DO SO!
+DO NOT MAKE UP BACKGROUNDS FOR OTHERS OR YOURSELF! YOU WILL BE EXPLICITLY TOLD ABOUT NEW THINGS AND OTHERS WILL REVEAL THEIR OWN BACKGROUNDS TO YOU!`;
 
-const MEMORY_SYSTEM_PROMPT = `You maintain the long-term memory of a humanoid character living in a shared house with other humanoids. You receive the humanoid's identity, their current memory, and a log of new events. Rewrite the memory to fold in the new events, then save it with the update_memory tool.
+const MEMORY_SYSTEM_PROMPT = `You maintain the long-term memory of a character living in a manor with other characters. You receive the character's identity, their current memory, and a log of new events. Rewrite the memory to fold in the new events, then save it with the update_memory tool.
 
 Guidelines:
-- Everything should be in second person (eg. You remember seeing someone walk by you earlier).
-- At most two short paragraphs, under 150 words total, written in first person ("I").
-- Keep what matters going forward: people met and what I think of them, things learned, ongoing plans, open conversation threads, notable places and things.
+- Everything should be in second person (eg. You remember hearing yelling from the north hall while you were in the south hall).
+- At most two short paragraphs, under 150 words total, written in second person ("You").
+- Keep what matters going forward: people met and what I think of them, what they look like, things learned, ongoing plans, open conversation threads, notable places and things.
 - Merge new events into existing knowledge; drop moment-to-moment noise (individual walks, bumps) unless it was meaningful.
+- Keep in mind the name of the room that things happened in or you found notable objects in so you can navigate back later.
 - The memory must stand alone — it replaces the old memory entirely.`;
 
 const MEMORY_TOOL: Anthropic.Tool = {
   name: "update_memory",
-  description: "Save the humanoid's rewritten long-term memory.",
+  description: "Save the character's rewritten long-term memory.",
   input_schema: {
     type: "object",
     properties: {
@@ -104,7 +109,11 @@ export function scheduleThinking(humanoids: Humanoid[], now: number) {
   }
 }
 
-export function maybeUpdateMemory(humanoid: Humanoid, now: number) {
+export function maybeUpdateMemory(
+  humanoid: Humanoid,
+  now: number,
+  world: Humanoid[],
+) {
   if (
     humanoid.dead ||
     humanoid.consolidating ||
@@ -115,7 +124,7 @@ export function maybeUpdateMemory(humanoid: Humanoid, now: number) {
     return;
   humanoid.consolidating = true;
   memoryInFlight++;
-  updateMemory(humanoid)
+  updateMemory(humanoid, world)
     .catch(() => {})
     .finally(() => {
       humanoid.consolidating = false;
@@ -124,7 +133,7 @@ export function maybeUpdateMemory(humanoid: Humanoid, now: number) {
     });
 }
 
-async function updateMemory(humanoid: Humanoid) {
+async function updateMemory(humanoid: Humanoid, world: Humanoid[]) {
   // snapshot the batch; new events may arrive while the request is in flight
   const batchSize = humanoid.unconsolidated.length;
   const events = humanoid.unconsolidated.slice(0, batchSize);
@@ -140,6 +149,10 @@ async function updateMemory(humanoid: Humanoid) {
     },
     // each new event rides as its own message, oldest first
     ...events.map((event) => ({ role: "user" as const, content: event })),
+    {
+      role: "user",
+      content: buildObservation(humanoid, world),
+    },
     { role: "user", content: "Rewrite the memory to fold in these events." },
   ];
 
@@ -220,21 +233,39 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
     // (e.g. find_path schedules an immediate follow-up), which must survive
     humanoid.nextThinkAt =
       simNow() + THINK_INTERVAL_MS + Math.random() * THINK_JITTER_MS;
-    for (const block of message.content) {
-      if (block.type === "tool_use") {
-        executeTool(
-          block.name,
-          humanoid,
-          world,
-          block.input as Record<string, unknown>,
-        );
-      }
+    for (const block of orderToolCalls(message.content)) {
+      executeTool(
+        block.name,
+        humanoid,
+        world,
+        block.input as Record<string, unknown>,
+      );
     }
   } catch (error) {
     record.status = "error";
     record.result = [String(error)];
     throw error;
   }
+}
+
+const SPEECH_TOOLS = new Set(["say", "yell"]);
+const MOVE_TOOLS = new Set(["walk_to", "run_to"]);
+
+// talking roots you in place, so when one turn combines speech and movement
+// the speech must land first or it would cancel the freshly-issued move
+function orderToolCalls(
+  content: Anthropic.Message["content"],
+): Anthropic.ToolUseBlock[] {
+  const calls = content.filter(
+    (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+  );
+  const hasSpeech = calls.some((block) => SPEECH_TOOLS.has(block.name));
+  const hasMove = calls.some((block) => MOVE_TOOLS.has(block.name));
+  if (!hasSpeech || !hasMove) return calls;
+  return [
+    ...calls.filter((block) => SPEECH_TOOLS.has(block.name)),
+    ...calls.filter((block) => !SPEECH_TOOLS.has(block.name)),
+  ];
 }
 
 // the stable frame: world rules plus who this humanoid is
@@ -306,7 +337,13 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
         other.dead
           ? "lying dead on the ground"
           : other.isMoving()
-            ? "moving"
+            ? other.followName
+              ? `following ${
+                  other.followName === humanoid.character.name
+                    ? "you"
+                    : other.followName
+                }`
+              : "moving"
             : "standing still"
       } in the room with you, ${formatFeet(distance)} away`;
       if (other.speech) entry += `, saying "${other.speech.text}"`;

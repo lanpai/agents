@@ -6,7 +6,7 @@ import { oldFashioned } from "./characters/oldFashioned";
 import { partingShot } from "./characters/partingShot";
 import { secondOpinion } from "./characters/secondOpinion";
 import { texasTea } from "./characters/texasTea";
-import { frozenRooms, Humanoid } from "./humanoid";
+import { frozenRooms, Humanoid, updateEmoteHolds } from "./humanoid";
 import { drawHouse, ROOMS, roomOf } from "./locations";
 import { drawLog } from "./log";
 import {
@@ -106,8 +106,10 @@ function frame(wallNow: number) {
   if (!paused) {
     advanceSimTime(dt * 1000);
     const now = simNow();
-    // time stands still only in rooms with a thinking or speaking humanoid;
-    // everyone elsewhere carries on as normal
+    // emote holds tick on wall time even while their own room is frozen
+    updateEmoteHolds(humanoids, dt);
+    // time stands still only in rooms with a thinking, speaking, or
+    // freshly-emoting humanoid; everyone elsewhere carries on as normal
     const frozen = frozenRooms(humanoids);
     for (const humanoid of humanoids) {
       if (frozen.has(roomOf(humanoid.x, humanoid.y))) {
@@ -119,7 +121,8 @@ function frame(wallNow: number) {
       }
     }
     scheduleThinking(humanoids, now);
-    for (const humanoid of humanoids) maybeUpdateMemory(humanoid, now);
+    for (const humanoid of humanoids)
+      maybeUpdateMemory(humanoid, now, humanoids);
   }
   updateCamera(dt); // wall-time: the camera glides even while rooms are frozen
   draw(wallNow);

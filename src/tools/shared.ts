@@ -158,9 +158,7 @@ export function roommateNames(humanoid: Humanoid, world: Humanoid[]): string[] {
   return world
     .filter(
       (other) =>
-        other !== humanoid &&
-        !other.dead &&
-        roomOf(other.x, other.y) === room,
+        other !== humanoid && !other.dead && roomOf(other.x, other.y) === room,
     )
     .map((other) => other.character.name);
 }
@@ -170,7 +168,12 @@ export function roommateNames(humanoid: Humanoid, world: Humanoid[]): string[] {
 export function destinations(humanoid: Humanoid, world: Humanoid[]): string[] {
   const room = roomOf(humanoid.x, humanoid.y);
   const roommates = world
-    .filter((other) => other !== humanoid && roomOf(other.x, other.y) === room)
+    .filter(
+      (other) =>
+        other !== humanoid &&
+        roomOf(other.x, other.y) === room &&
+        other.followName !== humanoid.character.name,
+    )
     .map((other) => other.character.name);
   return [...room.doors, ...roommates];
 }

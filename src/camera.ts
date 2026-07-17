@@ -17,6 +17,10 @@ let focusTarget: Focus | null = null;
 // the newest focus request that arrived while the shot was locked on a talker
 let pendingFocus: Focus | null = null;
 
+export function isCameraAutoFollowing(): boolean {
+  return autoFollow;
+}
+
 export function setCameraAutoFollow(enabled: boolean) {
   autoFollow = enabled;
   if (!enabled) {
@@ -37,6 +41,14 @@ export function focusCamera(points: FocusPoint[], zoom = FOCUS_ZOOM) {
     return;
   }
   focusTarget = { points, zoom };
+}
+
+// a talker's voice line just started playing: that IS the shot, so cut even
+// past a lock — the lock can outlive the previous line by a frame, and TTS
+// play order (not decision order) decides who is on screen
+export function focusCameraOnSpeaker(speaker: FocusPoint) {
+  if (!autoFollow) return;
+  focusTarget = { points: [speaker], zoom: FOCUS_ZOOM };
 }
 
 // exponential glide toward the focus target; runs on wall time so the camera
