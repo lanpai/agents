@@ -1,4 +1,5 @@
 import type { Humanoid } from "../humanoid";
+import type { SimTool } from "../tools";
 
 export abstract class Interactable {
   abstract name: string;
@@ -6,8 +7,10 @@ export abstract class Interactable {
 
   position: { x: number; y: number } | null = null;
 
-  constructor(x: number, y: number) {
-    this.position = { x, y };
+  constructor(x?: number, y?: number) {
+    if (x !== undefined && y !== undefined) {
+      this.position = { x, y };
+    }
   }
 
   draw(ctx: CanvasRenderingContext2D) {
@@ -25,16 +28,19 @@ export abstract class Interactable {
     }
   }
 
-  canInteract(_humanoid: Humanoid) {
-    return false;
+  onGroundTools(_humanoid: Humanoid): SimTool[] {
+    return [];
   }
-  interact(_humanoid: Humanoid) {}
 }
 
 // items live either in a Room's interactables array (with a position) or in
 // a Humanoid's carrying array (position null)
 export abstract class Item extends Interactable {
   abstract inInventoryDescription: string | ((humanoid: Humanoid) => string);
+
+  inInventoryTools(_humanoid: Humanoid): SimTool[] {
+    return [];
+  }
 }
 
 export abstract class Drinkable extends Item {

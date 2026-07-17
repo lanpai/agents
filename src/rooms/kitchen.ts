@@ -1,4 +1,5 @@
 import { Knife } from "../interactables/knife";
+import { WineRack } from "../interactables/wineRack";
 import { Room } from "./types";
 
 export const kitchen = new Room({
@@ -9,5 +10,5 @@ export const kitchen = new Room({
   w: 100,
   h: 150,
   doors: ["Dining Room", "Refrigerator Room"],
-  interactables: [new Knife(70, -300)],
+  interactables: [new WineRack(15, -300), new Knife(70, -300)],
 });

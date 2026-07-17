@@ -1,5 +1,5 @@
-import { bedroom4 } from "./bedrooms/bedroom4";
-import { bedroom5 } from "./bedrooms/bedroom5";
+import { texasTeasRoom } from "./bedrooms/texasTeasRoom";
+import { partingShotsRoom } from "./bedrooms/partingShotsRoom";
 import { bedroom6 } from "./bedrooms/bedroom6";
 import { bedroom7 } from "./bedrooms/bedroom7";
 import { bedroom8 } from "./bedrooms/bedroom8";
@@ -38,8 +38,8 @@ export const ROOMS: Room[] = [
   eveningWhiskeysRoom,
   secondOpinionsRoom,
   luckyInLoveAndOldFashionedsRoom,
-  bedroom4,
-  bedroom5,
+  texasTeasRoom,
+  partingShotsRoom,
   bedroom6,
   bedroom7,
   bedroom8,

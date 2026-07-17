@@ -15,6 +15,15 @@ import { simNow } from "./time";
 import type { Character } from "./characters/types";
 import type { Status } from "./statuses/types";
 
+export const UNITS_PER_FOOT = 10;
+
+// distances shown to the agents are in feet (10 world units = 1 foot)
+export function formatFeet(units: number): string {
+  const feet = Math.round(units / UNITS_PER_FOOT);
+  if (feet < 1) return "less than a foot";
+  return `${feet} ${feet === 1 ? "foot" : "feet"}`;
+}
+
 export const TOUCH_RANGE = 20;
 export const PUNCH_DAMAGE = 20;
 export const STAB_DAMAGE = 100;
@@ -46,6 +55,21 @@ const HEARD_REACTION_MS = 1500;
 
 const sprite = new Image();
 sprite.src = "/humanoid.png";
+
+// remember() an event for every living humanoid in the source's room, except
+// the source themself; pass a function to vary the text per viewer
+export function broadcastToRoom(
+  source: Humanoid,
+  world: Humanoid[],
+  event: string | ((viewer: Humanoid) => string),
+) {
+  const room = roomOf(source.x, source.y);
+  for (const other of world) {
+    if (other === source || other.dead) continue;
+    if (roomOf(other.x, other.y) !== room) continue;
+    other.remember(typeof event === "function" ? event(other) : event);
+  }
+}
 
 // rooms where time currently stands still: any room holding a humanoid who
 // is mid-decision or whose voice line is queued/playing
@@ -107,6 +131,8 @@ export class Humanoid {
     this.y = y;
     // stagger first decisions so 20 agents don't all call the API at once
     this.nextThinkAt = simNow() + Math.random() * 10000;
+
+    this.character.onInit?.(this);
   }
 
   isMoving(): boolean {
@@ -199,18 +225,15 @@ export class Humanoid {
     action: string,
     targetName?: string,
   ) {
-    const myRoom = roomOf(this.x, this.y);
-    for (const other of world) {
-      if (other === this || other.dead) continue;
-      if (roomOf(other.x, other.y) !== myRoom) continue;
+    broadcastToRoom(this, world, (viewer) => {
       const suffix =
         targetName === undefined
           ? ""
-          : targetName === other.character.name
+          : targetName === viewer.character.name
             ? " you"
             : ` ${targetName}`;
-      other.remember(`You saw ${this.character.name} ${action}${suffix}.`);
-    }
+      return `You saw ${this.character.name} ${action}${suffix}.`;
+    });
   }
 
   standStill() {

@@ -3,7 +3,9 @@ import { camera, initCameraControls, updateCamera } from "./camera";
 import { eveningWhiskey } from "./characters/eveningWhiskey";
 import { luckyInLove } from "./characters/luckyInLove";
 import { oldFashioned } from "./characters/oldFashioned";
+import { partingShot } from "./characters/partingShot";
 import { secondOpinion } from "./characters/secondOpinion";
+import { texasTea } from "./characters/texasTea";
 import { frozenRooms, Humanoid } from "./humanoid";
 import { drawHouse, ROOMS, roomOf } from "./locations";
 import { drawLog } from "./log";
@@ -14,23 +16,23 @@ import {
   saveItems,
 } from "./persistence";
 import { drawSelectionBox, initSelection, selected } from "./selection";
-import { initSidebar, isSidebarOpen } from "./sidebar";
+import { initSidebar } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
 import { pauseSpeech, resumeSpeech } from "./tts";
-
-const HUMANOID_COUNT = 5;
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 
 initCameraControls(canvas);
 
-const humanoids = loadHumanoids().slice(0, HUMANOID_COUNT);
+const humanoids = loadHumanoids();
 if (humanoids.length === 0) {
   humanoids.push(new Humanoid(eveningWhiskey, 20, 0));
   humanoids.push(new Humanoid(secondOpinion, -220, -20));
   humanoids.push(new Humanoid(luckyInLove, -190, 60));
   humanoids.push(new Humanoid(oldFashioned, -220, 60));
+  humanoids.push(new Humanoid(texasTea, -190, 160));
+  humanoids.push(new Humanoid(partingShot, -50, -80)); // his own room
 }
 
 // places saved items into rooms and carrying arrays; when no save exists,
@@ -97,7 +99,7 @@ function draw(now: number) {
   // screen-space UI
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawSelectionBox(ctx);
-  if (isSidebarOpen()) drawLog(ctx, selected);
+  drawLog(ctx, selected);
 }
 
 let last = performance.now();

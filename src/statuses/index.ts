@@ -1,4 +1,6 @@
 import type { Humanoid } from "../humanoid";
+import { Alcoholic } from "./alcoholic";
+import { Chainsmoker } from "./chainsmoker";
 import { Drunk } from "./drunk";
 import { Tipsy } from "./tipsy";
 import { Status } from "./types";
@@ -21,6 +23,8 @@ const STATUS_FACTORIES: Record<string, NonAbstractStatus> = {
   Tipsy,
   Drunk,
   Wasted,
+  Alcoholic,
+  Chainsmoker,
 };
 
 export function createStatus(name: string, owner: Humanoid): Status | null {

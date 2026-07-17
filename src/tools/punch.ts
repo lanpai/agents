@@ -1,4 +1,4 @@
-import { BODY_PARTS, PUNCH_DAMAGE, TOUCH_RANGE } from "../humanoid";
+import { BODY_PARTS, formatFeet, PUNCH_DAMAGE, TOUCH_RANGE } from "../humanoid";
 import { strike } from "./shared";
 import type { SimTool } from "./types";
 
@@ -6,7 +6,7 @@ export const punch: SimTool = {
   name: "punch",
   definition: {
     name: "punch",
-    description: `Punch a humanoid within arm's reach (${TOUCH_RANGE} units), dealing ${PUNCH_DAMAGE}% damage to the chosen body part.`,
+    description: `Punch a humanoid within arm's reach (${formatFeet(TOUCH_RANGE)}), dealing ${PUNCH_DAMAGE}% damage to the chosen body part.`,
     input_schema: {
       type: "object",
       properties: {

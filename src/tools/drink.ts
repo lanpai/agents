@@ -1,4 +1,6 @@
+import { broadcastToRoom } from "../humanoid";
 import { Drinkable } from "../interactables/types";
+import { logAction } from "../log";
 import type { SimTool } from "./types";
 
 export const drink: SimTool = {
@@ -7,7 +9,7 @@ export const drink: SimTool = {
     humanoid.carrying.some((item) => item instanceof Drinkable),
   definition: (humanoid) => ({
     name: "drink",
-    description: "Drink something you are carrying.",
+    description: "Drink something you are carrying. It is used up.",
     input_schema: {
       type: "object",
       properties: {
@@ -18,15 +20,27 @@ export const drink: SimTool = {
             .map((item) => item.name),
         },
       },
-      required: ["target", "body_part"],
+      required: ["target"],
     },
   }),
-  execute(humanoid, _world, input) {
-    for (const item of humanoid.carrying) {
-      if (!(item instanceof Drinkable)) continue;
-      if (String(input.target) !== item.name) continue;
-
-      item.onDrink(humanoid);
+  execute(humanoid, world, input) {
+    const item = humanoid.carrying.find(
+      (candidate) =>
+        candidate instanceof Drinkable && candidate.name === input.target,
+    );
+    if (!(item instanceof Drinkable)) {
+      humanoid.remember(`You have no ${input.target} to drink.`);
+      return;
     }
+    item.onDrink(humanoid);
+    // drinking uses the item up
+    humanoid.carrying.splice(humanoid.carrying.indexOf(item), 1);
+    humanoid.remember(`You drank the ${item.name}.`);
+    broadcastToRoom(
+      humanoid,
+      world,
+      `You saw ${humanoid.character.name} drink the ${item.name}.`,
+    );
+    logAction(`${humanoid.character.name} drinks the ${item.name}`, humanoid);
   },
 };

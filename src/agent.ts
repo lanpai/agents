@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { simNow } from "./time";
 import { recordAgentCall } from "./calls";
-import { BODY_PARTS, frozenRooms, type Humanoid } from "./humanoid";
+import { BODY_PARTS, formatFeet, frozenRooms, type Humanoid } from "./humanoid";
 import {
   describeItemInInventory,
   describeInteractableOnGround,
@@ -247,48 +247,45 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
 
   const heldItems = humanoid.carrying;
   for (const heldItem of heldItems) {
-    lines.push(describeItemInInventory(heldItem, humanoid), "");
+    lines.push("", describeItemInInventory(heldItem, humanoid));
   }
 
   if (humanoid.longMemory) {
-    lines.push(humanoid.longMemory, "");
+    lines.push("", humanoid.longMemory);
   }
 
   const visible = world.filter(
     (other) => other !== humanoid && roomOf(other.x, other.y) === room,
   );
   if (visible.length === 0) {
-    lines.push("You see no one else in the room.");
+    lines.push("", "You see no one else in the room.");
   } else {
     for (const other of visible) {
+      const distance = Math.hypot(other.x - humanoid.x, other.y - humanoid.y);
       let entry = `You see ${other.character.name} ${
         other.dead
           ? "lying dead on the ground"
           : other.isMoving()
             ? "moving"
             : "standing still"
-      } in the room with you`;
+      } in the room with you, ${formatFeet(distance)} away`;
       if (other.speech) entry += `, saying "${other.speech.text}"`;
 
-      lines.push(entry, other.character.describeHumanoid(other, humanoid));
+      lines.push("", entry, other.character.describeHumanoid(other, humanoid));
 
       for (const status of other.statuses.values()) {
         const description = status.describeStatus(other, humanoid);
         if (description) lines.push(description);
       }
-
-      lines.push("");
     }
   }
 
   for (const interactable of room.interactables) {
-    lines.push(describeInteractableOnGround(interactable, humanoid), "");
+    lines.push("", describeInteractableOnGround(interactable, humanoid));
   }
 
-  if (humanoid.memory.length === 0) {
-    lines.push("Nothing has happened yet.");
-  } else {
-    lines.push("The following occured recently (oldest first):");
+  if (humanoid.memory.length > 0) {
+    lines.push("", "The following occured recently (oldest first):");
     for (const event of humanoid.memory) lines.push(`- ${event}`);
   }
 
@@ -311,7 +308,7 @@ export function describeMovement(humanoid: Humanoid): string {
   return `You are standing still in ${roomOf(humanoid.x, humanoid.y).promptName}`;
 }
 
-export function describeBody(humanoid: Humanoid): string {
+export function describeBody(humanoid: Humanoid): string | null {
   const lines: string[] = [];
 
   if (humanoid.stamina >= 80) {
@@ -343,6 +340,8 @@ export function describeBody(humanoid: Humanoid): string {
         `Your ${part} is hurt to the point of being unusable, you don't feel it will get better.`,
       );
   }
+
+  if (lines.length === 0) return null;
 
   return lines.join("\n");
 }

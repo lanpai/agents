@@ -1,5 +1,5 @@
 import { simNow } from "../time";
-import { PUSH_DISTANCE, TOUCH_RANGE } from "../humanoid";
+import { formatFeet, PUSH_DISTANCE, TOUCH_RANGE } from "../humanoid";
 import { logAction } from "../log";
 import { reachableTarget } from "./shared";
 import type { SimTool } from "./types";
@@ -30,7 +30,7 @@ export const push: SimTool = {
   name: "push",
   definition: {
     name: "push",
-    description: `Shove a humanoid within arm's reach (${TOUCH_RANGE} units) in a compass direction. Moves them ${PUSH_DISTANCE} units; does not hurt the target.`,
+    description: `Shove a humanoid within arm's reach (${formatFeet(TOUCH_RANGE)}) in a compass direction. Moves them about ${formatFeet(PUSH_DISTANCE)}; does not hurt the target.`,
     input_schema: {
       type: "object",
       properties: {

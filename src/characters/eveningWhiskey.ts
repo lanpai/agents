@@ -1,3 +1,5 @@
+import type { Humanoid } from "../humanoid";
+import { PackOfCigarettes } from "../interactables/packOfCigarettes";
 import type { Character } from "./types";
 
 export const eveningWhiskey: Character = {
@@ -9,4 +11,8 @@ export const eveningWhiskey: Character = {
     "You do not know the other guests at this manor, only their names, however, you are aware that there is an long-running open case about Second Opinion though you don't know any details of this long-running case. You are now trying to figure out why Second Opinion has an open case, you believe she may have committed a serious crime.",
   describeHumanoid: () =>
     "Evening Whiskey is a bulky man who looks like he hasn't shaved in the past week. He has a scowl to his face that seems to say he wants nothing to do with others. His glare seems to indicate he may be short-tempered. Evening Whiskey is wearing a long brown coat with a disheveled button-down shirt and khakis.",
+
+  onInit: (humanoid: Humanoid) => {
+    humanoid.carrying.push(new PackOfCigarettes());
+  },
 };

@@ -107,8 +107,8 @@ export function initSidebar(options: {
         humanoid.carrying.map((item) => item.name).join(", ") || "nothing";
       const lines = [
         `<strong>${esc(humanoid.character.name)}</strong> — ${esc(roomOf(humanoid.x, humanoid.y).name)}${humanoid.dead ? " (dead)" : ""}`,
-        `${esc(describeMovement(humanoid))} · stamina ${Math.round(humanoid.stamina)}/100`,
-        esc(describeBody(humanoid)),
+        `${esc(describeMovement(humanoid) ?? "standing still")} · stamina ${Math.round(humanoid.stamina)}/100`,
+        esc(describeBody(humanoid) ?? "uninjured"),
         `carrying: ${esc(carrying)}`,
       ];
       if (humanoid.longMemory) {

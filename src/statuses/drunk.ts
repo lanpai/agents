@@ -7,15 +7,11 @@ export class Drunk extends Status {
   name = "Drunk";
   durationLeft = 3 * 60 * 1000;
 
-  constructor(owner: Humanoid) {
-    super(owner);
-  }
-
   describeStatus(humanoid: Humanoid, viewer: Humanoid) {
     if (humanoid !== viewer) {
       return `${humanoid.character.name} seems to be stumbling over their words.`;
     }
-    return "You are drunk and are noticeably stumbling on your own words. You are struggling to hold on.";
+    return "You are drunk and are noticeably stumbling on your own words. You are struggling to hold on. Any more drunks and you'll be wasted.";
   }
 
   override update(dt: number) {

@@ -6,4 +6,6 @@ export type Character = {
   voicePitch: number;
   initialMemory: string;
   describeHumanoid: (humanoid: Humanoid, viewer: Humanoid) => string;
+
+  onInit?: (humanoid: Humanoid) => void;
 };

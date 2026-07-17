@@ -5,15 +5,11 @@ export class Tipsy extends Status {
   name = "Tipsy";
   durationLeft = 3 * 60 * 1000;
 
-  constructor(owner: Humanoid) {
-    super(owner);
-  }
-
   describeStatus(humanoid: Humanoid, viewer: Humanoid) {
     if (humanoid !== viewer) {
       return `${humanoid.character.name} seems to not quite be all there mentally.`;
     }
-    return "You are a little tipsy and stumble on your own words here and there. Though you are holding on.";
+    return "You are a little tipsy and stumble on your own words here and there. Though you are holding on. Any more drinks and people may pick up that you're drunk.";
   }
 
   override update(dt: number) {

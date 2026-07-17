@@ -1,8 +1,8 @@
 import { Room } from "../types";
 
-export const bedroom4 = new Room({
-  name: "Bedroom 4",
-  promptName: "bedroom 4",
+export const texasTeasRoom = new Room({
+  name: "Texas Tea's Room",
+  promptName: "Texas Tea's room",
   x: -240,
   y: 120,
   w: 100,

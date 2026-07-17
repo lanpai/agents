@@ -1,3 +1,5 @@
+import { addStatusToHumanoid } from "../statuses";
+import { Alcoholic } from "../statuses/alcoholic";
 import type { Character } from "./types";
 
 export const oldFashioned: Character = {
@@ -9,4 +11,8 @@ export const oldFashioned: Character = {
     "You only know the names of the other guests at this manor and would like to learn more about them. You think there is alcohol in the kitchen.",
   describeHumanoid: () =>
     "Old Fashioned is a gorgeuous, young woman with a runway model's facial features. She has a delicate frame with a movie star's body. Old Fashioned is wearing a lavish wine red dress which suits her beautifully.",
+
+  onInit: (humanoid) => {
+    addStatusToHumanoid(humanoid, Alcoholic);
+  },
 };
