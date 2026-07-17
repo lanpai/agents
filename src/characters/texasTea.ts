@@ -1,3 +1,5 @@
+import type { Humanoid } from "../humanoid";
+import { PackOfCigarettes } from "../interactables/packOfCigarettes";
 import type { Character } from "./types";
 
 export const texasTea: Character = {
@@ -9,4 +11,8 @@ export const texasTea: Character = {
     "Aside from Parting Shot who is a male escort you've been a repeat client of (something you are very much hiding from the public), you only know the names of the other guests at this manor and would like to learn more about them.",
   describeHumanoid: () =>
     "Texas Tea is a very overbearing and rotund man wearing a gunslinger hat, a Texan's suit, and a pair of new leather boots. He walks with a large stride and a confident gait.",
+
+  onInit: (humanoid: Humanoid) => {
+    humanoid.carrying.push(new PackOfCigarettes());
+  },
 };

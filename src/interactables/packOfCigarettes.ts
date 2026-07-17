@@ -7,6 +7,7 @@ import { Item } from "./types";
 
 export class PackOfCigarettes extends Item {
   name = "Pack of Cigarettes";
+
   onGroundDescription = "You see a pack of cigarettes.";
   inInventoryDescription = "You are carrying a pack of cigarettes.";
 
@@ -37,7 +38,7 @@ export class PackOfCigarettes extends Item {
           broadcastToRoom(
             humanoid,
             world,
-            `You saw ${humanoid.character.name} smoke a cigarette ${suffix}.`,
+            `You saw ${humanoid.character.name} smoke a cigarette${suffix}.`,
           );
           logAction(
             `${humanoid.character.name} smokes a cigarette ${suffix}.`,

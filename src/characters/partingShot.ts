@@ -14,7 +14,7 @@ export const partingShot: Character = {
     "Parting Shot is an attractive, tall man with a slight frame wearing a beautiful dark-colored suit. He walks with the confident gait of a runway model with a beautiful face that's difficult to read.",
 
   onInit: (humanoid) => {
-    humanoid.carrying.push(new PackOfCigarettes());
+    // humanoid.carrying.push(new PackOfCigarettes());
     addStatusToHumanoid(humanoid, Chainsmoker);
   },
 };

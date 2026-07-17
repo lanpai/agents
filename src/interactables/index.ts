@@ -8,11 +8,13 @@ import { Wine } from "./wine";
 type NonAbstractItem = Pick<typeof Item, keyof typeof Item> &
   (new (...args: any[]) => Item);
 
-const ITEM_FACTORIES: Record<string, NonAbstractItem> = {
-  Knife,
-  Wine,
-  PackOfCigarettes,
-};
+const ITEM_CLASSES: NonAbstractItem[] = [Knife, Wine, PackOfCigarettes];
+
+// keyed by each item's display name (what saves store), not the class name —
+// e.g. "Pack of Cigarettes", not "PackOfCigarettes"
+const ITEM_FACTORIES: Record<string, NonAbstractItem> = Object.fromEntries(
+  ITEM_CLASSES.map((itemClass) => [new itemClass().name, itemClass]),
+);
 
 export function createItem(name: string, x: number, y: number): Item | null {
   const factory = ITEM_FACTORIES[name];
