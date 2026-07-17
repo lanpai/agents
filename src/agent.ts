@@ -337,7 +337,7 @@ export function describeMovement(humanoid: Humanoid): string {
       humanoid.pendingPath.length > 0
         ? humanoid.pendingPath[humanoid.pendingPath.length - 1]!
         : humanoid.target;
-    return `You are ${gait} to the ${roomOf(end.x, end.y).name} from ${roomOf(humanoid.x, humanoid.y).promptName}`;
+    return `You are ${gait} to ${roomOf(end.x, end.y).promptName} from ${roomOf(humanoid.x, humanoid.y).promptName}`;
   }
   return `You are standing still in ${roomOf(humanoid.x, humanoid.y).promptName}`;
 }

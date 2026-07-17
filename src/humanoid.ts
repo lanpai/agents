@@ -191,7 +191,7 @@ export class Humanoid {
       other.remember(
         sameRoom
           ? `You heard ${this.character.name} ${verb}: "${text}"`
-          : `You heard ${this.character.name} yell from the ${myRoom.name}: "${text}"`,
+          : `You heard ${this.character.name} yell from ${myRoom.promptName}: "${text}"`,
       );
       other.nextThinkAt = Math.min(
         other.nextThinkAt,
@@ -204,7 +204,7 @@ export class Humanoid {
   // through it, then land inside
   goToRoom(
     path: { x: number; y: number }[],
-    roomName: string,
+    roomPromptName: string,
     world: Humanoid[],
     running = false,
   ) {
@@ -215,8 +215,8 @@ export class Humanoid {
     this.followName = null;
     this.running = running;
     const gait = running ? "running" : "walking";
-    this.remember(`You started ${gait} to the ${roomName}.`);
-    this.announceDeparture(world, `start ${gait} toward the ${roomName}`);
+    this.remember(`You started ${gait} to ${roomPromptName}.`);
+    this.announceDeparture(world, `start ${gait} toward ${roomPromptName}`);
   }
 
   followHumanoid(name: string, world: Humanoid[], running = false) {
@@ -389,7 +389,9 @@ export class Humanoid {
             this.target = next;
           } else {
             this.target = null;
-            this.remember(`You arrived in the ${roomOf(this.x, this.y).name}.`);
+            this.remember(
+              `You arrived in ${roomOf(this.x, this.y).promptName}.`,
+            );
             // arrived — worth deciding what to do next soon
             this.nextThinkAt = Math.min(this.nextThinkAt, now + 500);
           }
@@ -423,17 +425,18 @@ export class Humanoid {
       this.roomName = room.name; // first update after spawn/load — no crossing
     } else if (room.name !== this.roomName) {
       const fromName = this.roomName;
+      const fromPrompt = roomByName(fromName)?.promptName ?? fromName;
       this.roomName = room.name;
       for (const other of world) {
         if (other === this || other.dead) continue;
         const otherRoomName = roomOf(other.x, other.y).name;
         if (otherRoomName === fromName) {
           other.remember(
-            `You saw ${this.character.name} leave the ${fromName} toward the ${room.name}.`,
+            `You saw ${this.character.name} leave ${fromPrompt} toward ${room.promptName}.`,
           );
         } else if (otherRoomName === room.name) {
           other.remember(
-            `You saw ${this.character.name} enter the ${room.name} from the ${fromName}.`,
+            `You saw ${this.character.name} enter ${room.promptName} from ${fromPrompt}.`,
           );
           // someone walking in is worth reacting to
           other.nextThinkAt = Math.min(

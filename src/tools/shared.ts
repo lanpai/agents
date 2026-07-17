@@ -132,7 +132,7 @@ export function moveToRoom(
   const targetRoom = roomByName(String(input.room));
   if (!targetRoom || !current.doors.includes(targetRoom.name)) {
     humanoid.remember(
-      `There is no door to ${input.room} from the ${current.name}.`,
+      `There is no door to ${input.room} from ${current.promptName}.`,
     );
     return;
   }
@@ -142,12 +142,12 @@ export function moveToRoom(
       doorBetween(current, targetRoom),
       doorLanding(current, targetRoom),
     ],
-    targetRoom.name,
+    targetRoom.promptName,
     world,
     running,
   );
   logAction(
-    `${humanoid.character.name} ${running ? "runs" : "walks"} to the ${targetRoom.name}`,
+    `${humanoid.character.name} ${running ? "runs" : "walks"} to ${targetRoom.promptName}`,
     humanoid,
   );
 }

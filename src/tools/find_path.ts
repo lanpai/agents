@@ -39,19 +39,20 @@ export const findPath: SimTool = {
       return;
     }
     if (destination === current) {
-      humanoid.remember(`You are already in the ${current.name}.`);
+      humanoid.remember(`You are already in ${current.promptName}.`);
       return;
     }
     const path = findRoomPath(current, destination);
     if (!path) {
       humanoid.remember(
-        `There is no way to reach the ${destination.name} from the ${current.name}.`,
+        `There is no way to reach ${destination.promptName} from ${current.promptName}.`,
       );
       return;
     }
     humanoid.remember(
-      `Route from the ${current.name} to the ${destination.name}: ${path
+      `Route from ${current.promptName} to ${destination.promptName}: ${path
         .slice(1)
+        .map((name) => roomByName(name)?.promptName ?? name)
         .join(", then ")}.`,
     );
     // routes are asked for in order to be used — think again right away
