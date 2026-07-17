@@ -18,7 +18,6 @@ import {
 import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
-import { pauseSpeech, resumeSpeech } from "./tts";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -61,8 +60,6 @@ initSidebar({
   isPaused: () => paused,
   setPaused: (value) => {
     paused = value;
-    if (paused) pauseSpeech();
-    else resumeSpeech();
   },
   clearData,
 });

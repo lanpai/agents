@@ -3,12 +3,6 @@ const UTTERANCE_FAILSAFE_MS = 15000;
 
 let queued = 0;
 
-// on init cancel all pending utterances
-if ("speechSynthesis" in window) {
-  speechSynthesis.cancel();
-  speechSynthesis.resume();
-}
-
 // browsers block speech synthesis until the page gets a user gesture after
 // load; speaking before that either silently drops the line or wedges the
 // shared engine so nothing ever plays. Hold TTS until the first interaction
@@ -18,8 +12,6 @@ let unlocked = false;
 if ("speechSynthesis" in window) {
   const unlock = () => {
     unlocked = true;
-    speechSynthesis.cancel();
-    speechSynthesis.resume();
     window.removeEventListener("pointerdown", unlock);
     window.removeEventListener("keydown", unlock);
   };
@@ -30,15 +22,6 @@ if ("speechSynthesis" in window) {
 // the sim pauses while this is true so actions never run ahead of the audio
 export function isSpeaking(): boolean {
   return queued > 0;
-}
-
-export function pauseSpeech() {
-  if ("speechSynthesis" in window) speechSynthesis.cancel();
-  if ("speechSynthesis" in window) speechSynthesis.pause();
-}
-
-export function resumeSpeech() {
-  if ("speechSynthesis" in window) speechSynthesis.resume();
 }
 
 // prefer a deliberately robotic voice when the OS has one (e.g. macOS "Zarvox"/"Trinoids");

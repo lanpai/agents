@@ -37,7 +37,8 @@ Guidelines:
 - Do not pretend to interact with objects you are not explicitly told are visible to you.
 
 DO NOT PRETEND TO INTERACT WITH OBJECTS THAT YOU DO NOT HAVE A TOOL CALL FOR!
-DO NOT PRETEND TO BE CARRYING OBJECTS THAT YOU ARE NOT TOLD ARE ON YOU!`;
+DO NOT PRETEND TO BE CARRYING OBJECTS THAT YOU ARE NOT TOLD ARE ON YOU!
+DO NOT MAKE UP BACKGROUNDS FOR OTHERS! YOU WILL BE EXPLICITLY TOLD ABOUT NEW THINGS OR OTHERS WILL REVEAL THEIR OWN BACKGROUNDS TO YOU!`;
 
 const MEMORY_SYSTEM_PROMPT = `You maintain the long-term memory of a humanoid character living in a shared house with other humanoids. You receive the humanoid's identity, their current memory, and a log of new events. Rewrite the memory to fold in the new events, then save it with the update_memory tool.
 
