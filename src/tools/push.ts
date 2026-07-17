@@ -1,6 +1,6 @@
 import { simNow } from "../time";
 import { formatFeet, PUSH_DISTANCE, TOUCH_RANGE } from "../humanoid";
-import { logAction } from "../log";
+import { logAction, logEmote } from "../log";
 import { reachableTarget } from "./shared";
 import type { SimTool } from "./types";
 
@@ -66,7 +66,7 @@ export const push: SimTool = {
       result.target.nextThinkAt,
       simNow() + 500,
     );
-    logAction(
+    logEmote(
       `${humanoid.character.name} pushes ${result.target.character.name} ${word}`,
       humanoid,
       result.target,

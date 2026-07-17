@@ -11,7 +11,7 @@ import {
   roomByName,
   roomOf,
 } from "../locations";
-import { logAction } from "../log";
+import { logAction, logEmote } from "../log";
 import { simNow } from "../time";
 
 export function reachableTarget(
@@ -78,7 +78,7 @@ export function strike(
     );
     result.target.nextThinkAt = Math.min(result.target.nextThinkAt, now + 500);
   }
-  logAction(
+  logEmote(
     `${humanoid.character.name} ${verb.present} ${result.target.character.name}'s ${part}`,
     humanoid,
     result.target,

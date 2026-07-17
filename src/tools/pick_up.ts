@@ -1,6 +1,6 @@
 import { itemsIn } from "../interactables";
 import { roomOf } from "../locations";
-import { logAction } from "../log";
+import { logEmote } from "../log";
 import type { SimTool } from "./types";
 
 export const pickUp: SimTool = {
@@ -45,7 +45,7 @@ export const pickUp: SimTool = {
         `You saw ${humanoid.character.name} pick up the ${item.name}.`,
       );
     }
-    logAction(
+    logEmote(
       `${humanoid.character.name} picks up the ${item.name}.`,
       humanoid,
     );

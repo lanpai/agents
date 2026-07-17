@@ -1,6 +1,6 @@
 import { broadcastToRoom } from "../humanoid";
 import { Drinkable } from "../interactables/types";
-import { logAction } from "../log";
+import { logEmote } from "../log";
 import type { SimTool } from "./types";
 
 export const drink: SimTool = {
@@ -41,6 +41,6 @@ export const drink: SimTool = {
       world,
       `You saw ${humanoid.character.name} drink the ${item.name}.`,
     );
-    logAction(`${humanoid.character.name} drinks the ${item.name}`, humanoid);
+    logEmote(`${humanoid.character.name} drinks the ${item.name}`, humanoid);
   },
 };

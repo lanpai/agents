@@ -1,6 +1,6 @@
 import type { Humanoid } from "../humanoid";
 import { roomOf } from "../locations";
-import { logAction } from "../log";
+import { logEmote } from "../log";
 import type { SimTool } from "../tools";
 import { Interactable } from "./types";
 import { Wine } from "./wine";
@@ -39,7 +39,7 @@ export class WineRack extends Interactable {
             );
           }
 
-          logAction(
+          logEmote(
             `${humanoid.character.name} grabs a bottle of wine from the wine rack`,
             humanoid,
           );

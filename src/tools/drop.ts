@@ -1,5 +1,5 @@
 import { roomOf } from "../locations";
-import { logAction } from "../log";
+import { logEmote } from "../log";
 import type { SimTool } from "./types";
 
 export const drop: SimTool = {
@@ -43,7 +43,7 @@ export const drop: SimTool = {
         `You saw ${humanoid.character.name} place down the ${item.name}.`,
       );
     }
-    logAction(
+    logEmote(
       `${humanoid.character.name} places down the ${item.name}.`,
       humanoid,
     );

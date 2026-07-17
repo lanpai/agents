@@ -113,6 +113,7 @@ export class Humanoid {
   pendingPath: { x: number; y: number }[] = []; // waypoints after the current target
   followName: string | null = null;
   speech: { text: string; until: number } | null = null;
+  emote: { text: string; until: number } | null = null; // *action* bubble
   memory: string[] = [];
   longMemory = "";
   unconsolidated: string[] = []; // events not yet folded into longMemory
@@ -137,6 +138,11 @@ export class Humanoid {
 
   isMoving(): boolean {
     return this.vx !== 0 || this.vy !== 0;
+  }
+
+  // a small *action* bubble over the head for non-speech, non-movement acts
+  showEmote(text: string) {
+    this.emote = { text, until: simNow() + 3000 + text.length * 50 };
   }
 
   // both legs at 100% -> 1, one dead leg -> 0.5, both dead -> 0
@@ -291,6 +297,7 @@ export class Humanoid {
 
   update(dt: number, now: number, world: Humanoid[]) {
     if (this.speech && now > this.speech.until) this.speech = null;
+    if (this.emote && now > this.emote.until) this.emote = null;
     if (this.dead) {
       this.vx = 0;
       this.vy = 0;
@@ -486,31 +493,53 @@ export class Humanoid {
     ctx.save();
     ctx.translate(this.x, this.y);
 
+    // bubbles stack upward from just above the head: speech first, then the
+    // action emote on top when both are showing
+    let stackBottom = -14;
     if (this.speech) {
-      ctx.textAlign = "center";
-      ctx.font = "11px monospace";
-      // bubbles live in world space: cap their width to what the current
-      // zoom can show on screen, wrapping onto more lines as needed
-      const maxWidth = Math.max(60, (window.innerWidth - 80) / camera.zoom);
-      const lines = wrapText(ctx, this.speech.text, maxWidth);
-      const lineHeight = 13;
-      const width = Math.max(
-        ...lines.map((line) => ctx.measureText(line).width),
-      );
-      const boxHeight = lines.length * lineHeight + 3;
-      // grows upward: the bottom edge stays fixed just above the head
-      const bubbleTop = -14 - boxHeight;
-      ctx.fillStyle = "#fff";
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 1;
-      ctx.fillRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
-      ctx.strokeRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
-      ctx.fillStyle = "#000";
-      lines.forEach((line, i) => {
-        ctx.fillText(line, 0, bubbleTop + 12 + i * lineHeight);
+      stackBottom = this.drawBubble(ctx, this.speech.text, stackBottom, {
+        font: "8px monospace",
+        lineHeight: 10,
+      });
+    }
+    if (this.emote) {
+      this.drawBubble(ctx, `*${this.emote.text}*`, stackBottom, {
+        font: "8px monospace",
+        lineHeight: 10,
       });
     }
 
     ctx.restore();
+  }
+
+  // draws one bubble whose bottom edge sits at `bottom`; returns the y to
+  // stack the next bubble above it. Width caps to what the zoom can show.
+  private drawBubble(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    bottom: number,
+    style: { font: string; lineHeight: number },
+  ): number {
+    ctx.textAlign = "center";
+    ctx.font = style.font;
+    const maxWidth = Math.max(60, (window.innerWidth - 80) / camera.zoom);
+    const lines = wrapText(ctx, text, maxWidth);
+    const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
+    const boxHeight = lines.length * style.lineHeight + 3;
+    const bubbleTop = bottom - boxHeight;
+    ctx.fillStyle = "#fff";
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.fillRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
+    ctx.strokeRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
+    ctx.fillStyle = "#000";
+    lines.forEach((line, i) => {
+      ctx.fillText(
+        line,
+        0,
+        bubbleTop + style.lineHeight - 1 + i * style.lineHeight,
+      );
+    });
+    return bubbleTop - 4;
   }
 }

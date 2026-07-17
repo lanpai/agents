@@ -1,6 +1,6 @@
 import { simNow } from "../time";
 import { findPath as findRoomPath, ROOMS, roomByName, roomOf } from "../locations";
-import { logAction } from "../log";
+import { logEmote } from "../log";
 import type { SimTool } from "./types";
 
 export const findPath: SimTool = {
@@ -55,7 +55,7 @@ export const findPath: SimTool = {
       humanoid.nextThinkAt,
       simNow() + 1000,
     );
-    logAction(
+    logEmote(
       `${humanoid.character.name} checks the route to the ${destination.name}`,
       humanoid,
     );

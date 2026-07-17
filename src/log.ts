@@ -24,6 +24,13 @@ export function logQuietAction(text: string, ...actors: Humanoid[]) {
   if (entries.length > MAX_ENTRIES) entries.shift();
 }
 
+// logAction plus an *action* bubble over the acting humanoid's head — for
+// actions that aren't talking or moving (picking up, drinking, striking, ...)
+export function logEmote(text: string, ...actors: Humanoid[]) {
+  logAction(text, ...actors);
+  actors[0]?.showEmote(text);
+}
+
 // bottom-anchored on the left edge, newest line at the bottom, older lines fading out.
 // when a selection exists, only entries involving a selected humanoid are shown.
 export function drawLog(ctx: CanvasRenderingContext2D, filter: Set<Humanoid>) {

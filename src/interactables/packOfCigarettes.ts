@@ -1,6 +1,6 @@
 import { broadcastToRoom, type Humanoid } from "../humanoid";
 import { roomOf } from "../locations";
-import { logAction } from "../log";
+import { logEmote } from "../log";
 import { Chainsmoker } from "../statuses/chainsmoker";
 import type { SimTool } from "../tools";
 import { Item } from "./types";
@@ -34,14 +34,14 @@ export class PackOfCigarettes extends Item {
           const room = roomOf(humanoid.x, humanoid.y);
           const suffix = room.name === "Porch" ? "" : " indoors";
 
-          humanoid.remember(`You smoked a cigarette ${suffix}.`);
+          humanoid.remember(`You smoked a cigarette${suffix}.`);
           broadcastToRoom(
             humanoid,
             world,
             `You saw ${humanoid.character.name} smoke a cigarette${suffix}.`,
           );
-          logAction(
-            `${humanoid.character.name} smokes a cigarette ${suffix}.`,
+          logEmote(
+            `${humanoid.character.name} smokes a cigarette${suffix}.`,
             humanoid,
           );
         },
