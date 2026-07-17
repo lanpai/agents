@@ -1,7 +1,6 @@
-import { describeBody, describeStatus } from "./agent";
+import { describeBody, describeMovement } from "./agent";
 import { agentCalls } from "./calls";
 import { setCameraAutoFollow } from "./camera";
-import { itemsHeldBy } from "./interactables";
 import { roomOf } from "./locations";
 import { selected } from "./selection";
 
@@ -105,12 +104,10 @@ export function initSidebar(options: {
     const blocks: string[] = [];
     for (const humanoid of selected) {
       const carrying =
-        itemsHeldBy(humanoid)
-          .map((item) => item.name)
-          .join(", ") || "nothing";
+        humanoid.carrying.map((item) => item.name).join(", ") || "nothing";
       const lines = [
         `<strong>${esc(humanoid.character.name)}</strong> — ${esc(roomOf(humanoid.x, humanoid.y).name)}${humanoid.dead ? " (dead)" : ""}`,
-        `${esc(describeStatus(humanoid))} · stamina ${Math.round(humanoid.stamina)}/100`,
+        `${esc(describeMovement(humanoid))} · stamina ${Math.round(humanoid.stamina)}/100`,
         esc(describeBody(humanoid)),
         `carrying: ${esc(carrying)}`,
       ];

@@ -1,37 +1,34 @@
 import type { Humanoid } from "../humanoid";
-import { roomOf, type Room } from "../locations";
+import type { Room } from "../rooms/types";
 import { Knife } from "./knife";
-import type { Item } from "./types";
+import { Interactable, Item } from "./types";
 
-// every item in the world, held or on the floor; main seeds/loads this
-export const items: Item[] = [];
+type NonAbstractItem = Pick<typeof Item, keyof typeof Item> &
+  (new (...args: any[]) => Item);
 
-const ITEM_FACTORIES: Record<string, (x: number, y: number) => Item> = {
-  Knife: (x, y) => new Knife(x, y),
+const ITEM_FACTORIES: Record<string, NonAbstractItem> = {
+  Knife,
 };
 
 export function createItem(name: string, x: number, y: number): Item | null {
   const factory = ITEM_FACTORIES[name];
-  return factory ? factory(x, y) : null;
+  return factory ? new factory(x, y) : null;
 }
 
-export function itemsHeldBy(humanoid: Humanoid): Item[] {
-  return items.filter((item) => item.holder === humanoid);
-}
-
-export function itemsOnFloorIn(room: Room): Item[] {
-  return items.filter(
-    (item) =>
-      !item.holder &&
-      item.position &&
-      roomOf(item.position.x, item.position.y) === room,
+// the pick-up-able subset of a room's interactables
+export function itemsIn(room: Room): Item[] {
+  return room.interactables.filter(
+    (interactable): interactable is Item => interactable instanceof Item,
   );
 }
 
-export function describeItemOnGround(item: Item, humanoid: Humanoid): string {
-  return typeof item.onGroundDescription === "function"
-    ? item.onGroundDescription(humanoid)
-    : item.onGroundDescription;
+export function describeInteractableOnGround(
+  interactable: Interactable,
+  humanoid: Humanoid,
+): string {
+  return typeof interactable.onGroundDescription === "function"
+    ? interactable.onGroundDescription(humanoid)
+    : interactable.onGroundDescription;
 }
 
 export function describeItemInInventory(

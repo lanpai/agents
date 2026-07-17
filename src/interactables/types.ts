@@ -31,14 +31,10 @@ export abstract class Interactable {
   interact(_humanoid: Humanoid) {}
 }
 
+// items live either in a Room's interactables array (with a position) or in
+// a Humanoid's carrying array (position null)
 export abstract class Item extends Interactable {
   abstract inInventoryDescription: string | ((humanoid: Humanoid) => string);
-
-  holder: Humanoid | null = null;
-
-  constructor(x: number, y: number) {
-    super(x, y);
-  }
 }
 
 export abstract class Drinkable extends Item {

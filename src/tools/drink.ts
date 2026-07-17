@@ -1,11 +1,10 @@
-import { itemsHeldBy } from "../interactables";
 import { Drinkable } from "../interactables/types";
 import type { SimTool } from "./types";
 
 export const drink: SimTool = {
   name: "drink",
   condition: (humanoid) =>
-    itemsHeldBy(humanoid).some((item) => item instanceof Drinkable),
+    humanoid.carrying.some((item) => item instanceof Drinkable),
   definition: (humanoid) => ({
     name: "drink",
     description: "Drink something you are carrying.",
@@ -14,7 +13,7 @@ export const drink: SimTool = {
       properties: {
         target: {
           type: "string",
-          enum: itemsHeldBy(humanoid)
+          enum: humanoid.carrying
             .filter((item) => item instanceof Drinkable)
             .map((item) => item.name),
         },
@@ -23,7 +22,7 @@ export const drink: SimTool = {
     },
   }),
   execute(humanoid, _world, input) {
-    for (const item of itemsHeldBy(humanoid)) {
+    for (const item of humanoid.carrying) {
       if (!(item instanceof Drinkable)) continue;
       if (String(input.target) !== item.name) continue;
 

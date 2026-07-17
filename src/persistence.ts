@@ -1,7 +1,9 @@
 import { characterByName } from "./characters";
+import { createStatus } from "./statuses";
 import { BODY_PARTS, Humanoid, type BodyPart } from "./humanoid";
 import { createItem } from "./interactables";
-import type { Item } from "./interactables/types";
+import { Item } from "./interactables/types";
+import { ROOMS, roomOf } from "./locations";
 
 const STORAGE_KEY = "sim.humanoids";
 const ITEMS_KEY = "sim.items";
@@ -21,6 +23,9 @@ type SavedHumanoid = {
   stamina: number;
   dead: boolean;
   running: boolean;
+  // statuses rebuild from the registry by name; durationLeft carries the
+  // remaining time for timed statuses
+  statuses: { name: string; durationLeft: number | null }[];
 };
 
 type SavedItem = {
@@ -30,14 +35,31 @@ type SavedItem = {
   holder: string | null;
 };
 
-export function saveItems(items: Item[]) {
-  const data: SavedItem[] = items.map((item) => ({
-    name: item.name,
-    // for held items, remember the holder's position as a drop fallback
-    x: item.position?.x ?? item.holder?.x ?? 0,
-    y: item.position?.y ?? item.holder?.y ?? 0,
-    holder: item.holder?.character.name ?? null,
-  }));
+// items are gathered from the rooms (floor) and the humanoids (carried)
+export function saveItems(humanoids: Humanoid[]) {
+  const data: SavedItem[] = [];
+  for (const room of ROOMS) {
+    for (const interactable of room.interactables) {
+      if (!(interactable instanceof Item)) continue;
+      data.push({
+        name: interactable.name,
+        x: interactable.position?.x ?? 0,
+        y: interactable.position?.y ?? 0,
+        holder: null,
+      });
+    }
+  }
+  for (const humanoid of humanoids) {
+    for (const item of humanoid.carrying) {
+      // the holder's position is the drop fallback if they vanish from a save
+      data.push({
+        name: item.name,
+        x: humanoid.x,
+        y: humanoid.y,
+        holder: humanoid.character.name,
+      });
+    }
+  }
   try {
     localStorage.setItem(ITEMS_KEY, JSON.stringify(data));
   } catch {
@@ -45,13 +67,20 @@ export function saveItems(items: Item[]) {
   }
 }
 
-export function loadItems(humanoids: Humanoid[]): Item[] {
+// places saved items into rooms/carrying; a valid save replaces the seed
+// items declared in src/rooms
+export function loadItems(humanoids: Humanoid[]) {
   try {
     const raw = localStorage.getItem(ITEMS_KEY);
-    if (!raw) return [];
+    if (!raw) return;
     const data: unknown = JSON.parse(raw);
-    if (!Array.isArray(data)) return [];
-    const items: Item[] = [];
+    if (!Array.isArray(data)) return;
+    for (const room of ROOMS) {
+      room.interactables = room.interactables.filter(
+        (interactable) => !(interactable instanceof Item),
+      );
+    }
+    for (const humanoid of humanoids) humanoid.carrying = [];
     for (const entry of data) {
       const saved = entry as Partial<SavedItem> | null;
       if (
@@ -64,21 +93,22 @@ export function loadItems(humanoids: Humanoid[]): Item[] {
       }
       const item = createItem(saved.name, saved.x, saved.y);
       if (!item) continue;
-      if (typeof saved.holder === "string") {
-        const holder = humanoids.find(
-          (humanoid) => humanoid.character.name === saved.holder,
-        );
+      const holder =
+        typeof saved.holder === "string"
+          ? humanoids.find(
+              (humanoid) => humanoid.character.name === saved.holder,
+            )
+          : undefined;
+      if (holder) {
+        item.position = null;
+        holder.carrying.push(item);
+      } else {
         // a holder that no longer exists leaves the item dropped at the saved spot
-        if (holder) {
-          item.holder = holder;
-          item.position = null;
-        }
+        roomOf(saved.x, saved.y).interactables.push(item);
       }
-      items.push(item);
     }
-    return items;
   } catch {
-    return [];
+    // unreadable save — keep the seeded defaults
   }
 }
 
@@ -96,6 +126,14 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     stamina: humanoid.stamina,
     dead: humanoid.dead,
     running: humanoid.running,
+    statuses: [...humanoid.statuses.values()].map((status) => {
+      const timed = status as { durationLeft?: number };
+      return {
+        name: status.name,
+        durationLeft:
+          typeof timed.durationLeft === "number" ? timed.durationLeft : null,
+      };
+    }),
   }));
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -153,6 +191,18 @@ function restore(entry: unknown): Humanoid | null {
     humanoid.stamina = clamp(saved.stamina);
   humanoid.dead = saved.dead === true;
   humanoid.running = saved.running === true;
+  if (Array.isArray(saved.statuses)) {
+    for (const entry of saved.statuses) {
+      if (!entry || typeof entry.name !== "string") continue;
+      const status = createStatus(entry.name, humanoid);
+      if (!status) continue; // status type no longer exists
+      if (typeof entry.durationLeft === "number") {
+        (status as { durationLeft?: number }).durationLeft =
+          entry.durationLeft;
+      }
+      humanoid.statuses.set(status.name, status);
+    }
+  }
   return humanoid;
 }
 

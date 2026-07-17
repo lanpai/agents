@@ -4,9 +4,7 @@ import { recordAgentCall } from "./calls";
 import { BODY_PARTS, frozenRooms, type Humanoid } from "./humanoid";
 import {
   describeItemInInventory,
-  describeItemOnGround,
-  itemsHeldBy,
-  itemsOnFloorIn,
+  describeInteractableOnGround,
 } from "./interactables";
 import { ROOMS, roomOf } from "./locations";
 import { buildTools, executeTool } from "./tools";
@@ -237,13 +235,17 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
     `Your name is ${humanoid.character.name}.`,
     humanoid.character.description,
     "",
-    describeStatus(humanoid),
+    describeMovement(humanoid),
     `You see doors leading to ${room.doors.map((door) => ROOMS.find((room) => room.name === door)?.promptName).join(", ")}.`,
-    "",
     describeBody(humanoid),
   ];
 
-  const heldItems = itemsHeldBy(humanoid);
+  for (const status of humanoid.statuses.values()) {
+    const description = status.describeStatus(humanoid, humanoid);
+    if (description) lines.push("", description);
+  }
+
+  const heldItems = humanoid.carrying;
   for (const heldItem of heldItems) {
     lines.push(describeItemInInventory(heldItem, humanoid), "");
   }
@@ -267,13 +269,20 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
             : "standing still"
       } in the room with you`;
       if (other.speech) entry += `, saying "${other.speech.text}"`;
-      lines.push(entry, other.character.describeHumanoid(other, humanoid), "");
+
+      lines.push(entry, other.character.describeHumanoid(other, humanoid));
+
+      for (const status of other.statuses.values()) {
+        const description = status.describeStatus(other, humanoid);
+        if (description) lines.push(description);
+      }
+
+      lines.push("");
     }
   }
 
-  const floorItems = itemsOnFloorIn(room);
-  for (const item of floorItems) {
-    lines.push(describeItemOnGround(item, humanoid), "");
+  for (const interactable of room.interactables) {
+    lines.push(describeInteractableOnGround(interactable, humanoid), "");
   }
 
   if (humanoid.memory.length === 0) {
@@ -287,7 +296,7 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   return lines.filter((x) => x !== null).join("\n");
 }
 
-export function describeStatus(humanoid: Humanoid): string {
+export function describeMovement(humanoid: Humanoid): string {
   const gait = humanoid.running ? "running" : "walking";
   if (humanoid.followName)
     return `You are ${gait} toward ${humanoid.followName} in ${roomOf(humanoid.x, humanoid.y).promptName}`;
@@ -307,31 +316,33 @@ export function describeBody(humanoid: Humanoid): string {
 
   if (humanoid.stamina >= 80) {
   } else if (humanoid.stamina >= 50) {
-    lines.push("You are starting to get tired.");
+    lines.push("", "You are starting to get tired.");
   } else if (humanoid.stamina >= 25) {
-    lines.push("You are very tired.");
+    lines.push("", "You are very tired.");
   } else if (humanoid.stamina > 0) {
-    lines.push("You are almost at the point of complete exhaustion.");
+    lines.push("", "You are almost at the point of complete exhaustion.");
   } else {
     lines.push(
+      "",
       "You are completely exhausted and must rest before you can move.",
     );
   }
-  lines.push("");
 
   for (const part of BODY_PARTS) {
     const health = humanoid.body[part];
     if (health >= 100) continue;
-    else if (health >= 75) lines.push(`Your ${part} is in a bit of pain.`);
+    else if (health >= 75) lines.push("", `Your ${part} is in a bit of pain.`);
     else if (health >= 50)
-      lines.push(`Your ${part} is in a fair amount of pain.`);
-    else if (health >= 25) lines.push(`Your ${part} is in a lot of pain.`);
-    else if (health > 0) lines.push(`Your ${part} is in excruciating pain.`);
+      lines.push("", `Your ${part} is in a fair amount of pain.`);
+    else if (health >= 25) lines.push("", `Your ${part} is in a lot of pain.`);
+    else if (health > 0)
+      lines.push("", `Your ${part} is in excruciating pain.`);
     else
       lines.push(
+        "",
         `Your ${part} is hurt to the point of being unusable, you don't feel it will get better.`,
       );
   }
 
-  return lines.join("\n") + "\n";
+  return lines.join("\n");
 }

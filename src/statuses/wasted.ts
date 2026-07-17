@@ -4,14 +4,14 @@ import { Drunk } from "./drunk";
 import { Status } from "./types";
 
 export class Wasted extends Status {
-  override name = "Wasted";
-  durationLeft = 60 * 1000;
+  name = "Wasted";
+  durationLeft = 3 * 60 * 1000;
 
   constructor(owner: Humanoid) {
     super(owner);
   }
 
-  override describeStatus(humanoid: Humanoid, viewer: Humanoid) {
+  describeStatus(humanoid: Humanoid, viewer: Humanoid) {
     if (humanoid !== viewer) {
       return `${humanoid.character.name} is noticeably inebriated and seems to no longer be in control.`;
     }

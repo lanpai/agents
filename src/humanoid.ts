@@ -7,7 +7,7 @@ import {
   roomOf,
   wrapText,
 } from "./locations";
-import { itemsHeldBy } from "./interactables";
+import type { Item } from "./interactables/types";
 import { logAction } from "./log";
 import { camera } from "./camera";
 import { speak } from "./tts";
@@ -83,6 +83,7 @@ export class Humanoid {
   stamina = 100;
   dead = false;
   running = false;
+  carrying: Item[] = [];
 
   target: { x: number; y: number } | null = null;
   pendingPath: { x: number; y: number }[] = []; // waypoints after the current target
@@ -246,15 +247,16 @@ export class Humanoid {
     this.pendingPath = [];
     this.followName = null;
     this.speech = null;
+    const myRoom = roomOf(this.x, this.y);
     // whatever they carried spills onto the body
-    for (const item of itemsHeldBy(this)) {
-      item.holder = null;
+    for (const item of this.carrying) {
       item.position = {
         x: this.x + (Math.random() - 0.5) * 12,
         y: this.y + (Math.random() - 0.5) * 12,
       };
+      myRoom.interactables.push(item);
     }
-    const myRoom = roomOf(this.x, this.y);
+    this.carrying = [];
     for (const other of world) {
       if (other === this || other.dead) continue;
       if (roomOf(other.x, other.y) === myRoom) {
@@ -406,6 +408,10 @@ export class Humanoid {
           );
         }
       }
+    }
+
+    for (const status of this.statuses.values()) {
+      status.update(dt, now, world);
     }
   }
 

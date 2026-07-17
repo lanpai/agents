@@ -5,9 +5,7 @@ import { luckyInLove } from "./characters/luckyInLove";
 import { oldFashioned } from "./characters/oldFashioned";
 import { secondOpinion } from "./characters/secondOpinion";
 import { frozenRooms, Humanoid } from "./humanoid";
-import { items } from "./interactables";
-import { Knife } from "./interactables/knife";
-import { drawHouse, roomOf } from "./locations";
+import { drawHouse, ROOMS, roomOf } from "./locations";
 import { drawLog } from "./log";
 import {
   loadHumanoids,
@@ -35,12 +33,13 @@ if (humanoids.length === 0) {
   humanoids.push(new Humanoid(oldFashioned, -220, 60));
 }
 
-items.push(...loadItems(humanoids));
-if (items.length === 0) items.push(new Knife(70, -300));
+// places saved items into rooms and carrying arrays; when no save exists,
+// the seeds declared in src/rooms remain
+loadItems(humanoids);
 
 const save = () => {
   saveHumanoids(humanoids);
-  saveItems(items);
+  saveItems(humanoids);
 };
 setInterval(save, 3000);
 const beforeUnload = save;
@@ -89,7 +88,9 @@ function draw(now: number) {
   for (const humanoid of sortedHumanoids) humanoid.drawUnderlay(ctx, now);
   for (const humanoid of sortedHumanoids) humanoid.draw(ctx);
 
-  for (const item of items) item.draw(ctx);
+  for (const room of ROOMS) {
+    for (const interactable of room.interactables) interactable.draw(ctx);
+  }
 
   for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx);
 
