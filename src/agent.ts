@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { simNow } from "./time";
 import { recordAgentCall } from "./calls";
-import { BODY_PARTS, type Humanoid } from "./humanoid";
+import { BODY_PARTS, frozenRooms, type Humanoid } from "./humanoid";
 import {
   describeItemInInventory,
   describeItemOnGround,
@@ -11,9 +11,10 @@ import {
 import { ROOMS, roomOf } from "./locations";
 import { buildTools, executeTool } from "./tools";
 
-// decisions are strictly sequential: concurrent thinking lets two humanoids
-// compose replies before either one's speech lands, garbling conversations
-const MAX_CONCURRENT = 1;
+// decisions are serialized per room (a thinking humanoid freezes its room, so
+// roommates can't compose replies past each other), but different rooms may
+// think at the same time — this only caps total API concurrency
+const MAX_CONCURRENT = 3;
 const THINK_INTERVAL_MS = 15000;
 const THINK_JITTER_MS = 6000;
 const ERROR_BACKOFF_MS = 15000;
@@ -76,6 +77,7 @@ export function isThinking(): boolean {
 // oldest-due first so humanoids late in the array can't be starved of slots
 export function scheduleThinking(humanoids: Humanoid[], now: number) {
   if (inFlight >= MAX_CONCURRENT) return;
+  const frozen = frozenRooms(humanoids);
   const due = humanoids
     .filter(
       (humanoid) =>
@@ -84,6 +86,11 @@ export function scheduleThinking(humanoids: Humanoid[], now: number) {
     .sort((a, b) => a.nextThinkAt - b.nextThinkAt);
   for (const humanoid of due) {
     if (inFlight >= MAX_CONCURRENT) return;
+    // never start a decision in a room where time is standing still — that
+    // includes rooms frozen by a pick earlier in this same pass
+    const room = roomOf(humanoid.x, humanoid.y);
+    if (frozen.has(room)) continue;
+    frozen.add(room);
     humanoid.thinking = true;
     inFlight++;
     decide(humanoid, humanoids)

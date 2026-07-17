@@ -36,12 +36,14 @@ export const pickUp: SimTool = {
       return;
     }
     item.holder = humanoid;
-    item.droppedPosition = null;
+    item.position = null;
     humanoid.remember(`You picked up the ${item.name}.`);
     for (const witness of world) {
       if (witness === humanoid || witness.dead) continue;
       if (roomOf(witness.x, witness.y) !== room) continue;
-      witness.remember(`You saw ${humanoid.character.name} pick up the ${item.name}.`);
+      witness.remember(
+        `You saw ${humanoid.character.name} pick up the ${item.name}.`,
+      );
     }
     logAction(`${humanoid.character.name} picks up the ${item.name}`, humanoid);
   },

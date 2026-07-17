@@ -1,13 +1,13 @@
-import { isThinking, maybeUpdateMemory, scheduleThinking } from "./agent";
+import { maybeUpdateMemory, scheduleThinking } from "./agent";
 import { camera, initCameraControls, updateCamera } from "./camera";
 import { eveningWhiskey } from "./characters/eveningWhiskey";
 import { luckyInLove } from "./characters/luckyInLove";
 import { oldFashioned } from "./characters/oldFashioned";
 import { secondOpinion } from "./characters/secondOpinion";
-import { Humanoid } from "./humanoid";
+import { frozenRooms, Humanoid } from "./humanoid";
 import { items } from "./interactables";
 import { Knife } from "./interactables/knife";
-import { drawHouse } from "./locations";
+import { drawHouse, roomOf } from "./locations";
 import { drawLog } from "./log";
 import {
   loadHumanoids,
@@ -18,7 +18,7 @@ import {
 import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
-import { isSpeaking, pauseSpeech, resumeSpeech } from "./tts";
+import { pauseSpeech, resumeSpeech } from "./tts";
 
 const HUMANOID_COUNT = 5;
 
@@ -103,16 +103,25 @@ let last = performance.now();
 function frame(wallNow: number) {
   const dt = Math.min((wallNow - last) / 1000, 0.05);
   last = wallNow;
-  // the world holds still — and sim time itself freezes — while paused, while
-  // a voice is speaking, and while a humanoid is deciding what to do
-  if (!paused && !isSpeaking() && !isThinking()) {
+  if (!paused) {
     advanceSimTime(dt * 1000);
     const now = simNow();
-    for (const humanoid of humanoids) humanoid.update(dt, now, humanoids);
+    // time stands still only in rooms with a thinking or speaking humanoid;
+    // everyone elsewhere carries on as normal
+    const frozen = frozenRooms(humanoids);
+    for (const humanoid of humanoids) {
+      if (frozen.has(roomOf(humanoid.x, humanoid.y))) {
+        // hold their personal schedule in place while their room is frozen
+        humanoid.nextThinkAt += dt * 1000;
+        humanoid.nextMemoryAt += dt * 1000;
+      } else {
+        humanoid.update(dt, now, humanoids);
+      }
+    }
     scheduleThinking(humanoids, now);
     for (const humanoid of humanoids) maybeUpdateMemory(humanoid, now);
   }
-  updateCamera(dt); // wall-time: the camera glides even while the sim is frozen
+  updateCamera(dt); // wall-time: the camera glides even while rooms are frozen
   draw(wallNow);
   requestAnimationFrame(frame);
 }

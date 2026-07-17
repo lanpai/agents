@@ -13,6 +13,7 @@ import { camera } from "./camera";
 import { speak } from "./tts";
 import { simNow } from "./time";
 import type { Character } from "./characters/types";
+import type { Status } from "./statuses/types";
 
 export const TOUCH_RANGE = 20;
 export const PUNCH_DAMAGE = 20;
@@ -43,10 +44,21 @@ const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
 
-type Status = "killer";
-
 const sprite = new Image();
 sprite.src = "/humanoid.png";
+
+// rooms where time currently stands still: any room holding a humanoid who
+// is mid-decision or whose voice line is queued/playing
+export function frozenRooms(world: Humanoid[]) {
+  const rooms = new Set<ReturnType<typeof roomOf>>();
+  for (const humanoid of world) {
+    if (humanoid.dead) continue;
+    if (humanoid.thinking || humanoid.speaking) {
+      rooms.add(roomOf(humanoid.x, humanoid.y));
+    }
+  }
+  return rooms;
+}
 
 export class Humanoid {
   character: Character;
@@ -58,7 +70,7 @@ export class Humanoid {
   hopT = 0; // 0 = grounded, (0,1) = mid-hop arc
   hopTilt = 0;
 
-  status = new Set<Status>();
+  statuses = new Map<string, Status>();
 
   body: Record<BodyPart, number> = {
     head: 100,
@@ -81,6 +93,7 @@ export class Humanoid {
   unconsolidated: string[] = []; // events not yet folded into longMemory
 
   thinking = false;
+  speaking = false; // a TTS line of theirs is queued or playing
   nextThinkAt: number;
   consolidating = false;
   nextMemoryAt = 0;
@@ -120,9 +133,11 @@ export class Humanoid {
         },
         onEnd: () => {
           if (this.speech && this.speech.text === text) this.speech = null;
+          this.speaking = false;
         },
       },
     );
+    if (spoken) this.speaking = true; // freezes this room until the line ends
     // no TTS (unsupported browser or full queue): fall back to a timed bubble
     if (!spoken) this.speech = { text, until: now + 4000 + text.length * 60 };
     this.remember(
@@ -234,7 +249,7 @@ export class Humanoid {
     // whatever they carried spills onto the body
     for (const item of itemsHeldBy(this)) {
       item.holder = null;
-      item.droppedPosition = {
+      item.position = {
         x: this.x + (Math.random() - 0.5) * 12,
         y: this.y + (Math.random() - 0.5) * 12,
       };

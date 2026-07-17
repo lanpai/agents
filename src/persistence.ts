@@ -34,8 +34,8 @@ export function saveItems(items: Item[]) {
   const data: SavedItem[] = items.map((item) => ({
     name: item.name,
     // for held items, remember the holder's position as a drop fallback
-    x: item.droppedPosition?.x ?? item.holder?.x ?? 0,
-    y: item.droppedPosition?.y ?? item.holder?.y ?? 0,
+    x: item.position?.x ?? item.holder?.x ?? 0,
+    y: item.position?.y ?? item.holder?.y ?? 0,
     holder: item.holder?.character.name ?? null,
   }));
   try {
@@ -71,7 +71,7 @@ export function loadItems(humanoids: Humanoid[]): Item[] {
         // a holder that no longer exists leaves the item dropped at the saved spot
         if (holder) {
           item.holder = holder;
-          item.droppedPosition = null;
+          item.position = null;
         }
       }
       items.push(item);

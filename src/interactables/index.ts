@@ -23,8 +23,8 @@ export function itemsOnFloorIn(room: Room): Item[] {
   return items.filter(
     (item) =>
       !item.holder &&
-      item.droppedPosition &&
-      roomOf(item.droppedPosition.x, item.droppedPosition.y) === room,
+      item.position &&
+      roomOf(item.position.x, item.position.y) === room,
   );
 }
 
