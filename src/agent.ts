@@ -368,16 +368,16 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
 export function describeMovement(humanoid: Humanoid): string {
   const gait = humanoid.running ? "running" : "walking";
   if (humanoid.followName)
-    return `You are ${gait} toward ${humanoid.followName} in ${roomOf(humanoid.x, humanoid.y).promptName}`;
+    return `You are ${gait} toward ${humanoid.followName} in ${roomOf(humanoid.x, humanoid.y).promptName}.`;
   if (humanoid.target) {
     // the path's final waypoint identifies the destination room
     const end =
       humanoid.pendingPath.length > 0
         ? humanoid.pendingPath[humanoid.pendingPath.length - 1]!
         : humanoid.target;
-    return `You are ${gait} to ${roomOf(end.x, end.y).promptName} from ${roomOf(humanoid.x, humanoid.y).promptName}`;
+    return `You are ${gait} to ${roomOf(end.x, end.y).promptName} from ${roomOf(humanoid.x, humanoid.y).promptName}.`;
   }
-  return `You are standing still in ${roomOf(humanoid.x, humanoid.y).promptName}`;
+  return `You are standing still in ${roomOf(humanoid.x, humanoid.y).promptName}.`;
 }
 
 export function describeBody(humanoid: Humanoid): string | null {
