@@ -45,7 +45,15 @@ function getToolsFor(humanoid: Humanoid, world: Humanoid[]) {
     tools.push(...interactable.onGroundTools(humanoid));
   }
 
-  return tools;
+  // duplicate items (say, two packs of cigarettes) each offer their tool, and
+  // the API rejects two tools with the same name — keep the first of each,
+  // which is also the one executeTool's find() would run
+  const seen = new Set<string>();
+  return tools.filter((tool) => {
+    if (seen.has(tool.name)) return false;
+    seen.add(tool.name);
+    return true;
+  });
 }
 
 // the tool list a humanoid sees: only tools whose condition passes, with

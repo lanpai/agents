@@ -21,14 +21,25 @@ export const yell: SimTool = {
             type: "string",
             description: "What to yell, under 15 words, kept short and natural",
           },
+          delivery: {
+            type: "string",
+            description:
+              'How the line is yelled, in a few words (e.g. "furious, spitting every word", "booming and jovial", "cracking with panic")',
+          },
         },
-        required: ["message"],
+        required: ["message", "delivery"],
       },
     };
   },
   execute(humanoid, world, input) {
     if (typeof input.message === "string" && input.message.length > 0) {
-      humanoid.say(input.message, world, simNow(), "yell");
+      humanoid.say(
+        input.message,
+        world,
+        simNow(),
+        "yell",
+        typeof input.delivery === "string" ? input.delivery : undefined,
+      );
       // quiet: the camera cut comes from say() when the voice line starts
       logQuietAction(
         `${humanoid.character.name} yells: "${input.message}"`,

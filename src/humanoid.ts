@@ -229,7 +229,13 @@ export class Humanoid {
     return (this.body["left leg"] + this.body["right leg"]) / 200;
   }
 
-  say(text: string, world: Humanoid[], now: number, verb: "say" | "yell") {
+  say(
+    text: string,
+    world: Humanoid[],
+    now: number,
+    verb: "say" | "yell",
+    delivery?: string, // stage direction for the voice, passed to transcription
+  ) {
     // trim quotes if fully wrapped (avoids trimming text that starts of ends with quoted text)
     if (text.startsWith('"') && text.endsWith('"'))
       text = text.substring(1, text.length - 1);
@@ -238,25 +244,24 @@ export class Humanoid {
     this.standStill();
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
-    const spoken = speak(
-      text,
-      verb === "yell" ? 1 : 0.7,
-      this.character.voicePitch,
-      {
-        onStart: () => {
-          if (this.dead) return;
-          this.speech = { text, until: Number.POSITIVE_INFINITY };
-          // the camera cuts when the line becomes audible, not when it was
-          // queued: with lines queued from different rooms, play order —
-          // not decision order — picks who is on screen
-          focusCameraOnSpeaker(this);
-        },
-        onEnd: () => {
-          if (this.speech && this.speech.text === text) this.speech = null;
-          this.speaking = false;
-        },
+    const spoken = speak(text, {
+      speaker: this.character.name,
+      voice: this.character.voice,
+      delivery,
+      volume: verb === "yell" ? 1 : 0.7,
+      onStart: () => {
+        if (this.dead) return;
+        this.speech = { text, until: Number.POSITIVE_INFINITY };
+        // the camera cuts when the line becomes audible, not when it was
+        // queued: with lines queued from different rooms, play order —
+        // not decision order — picks who is on screen
+        focusCameraOnSpeaker(this);
       },
-    );
+      onEnd: () => {
+        if (this.speech && this.speech.text === text) this.speech = null;
+        this.speaking = false;
+      },
+    });
     if (spoken) this.speaking = true; // freezes this room until the line ends
     // no TTS (unsupported browser or full queue): fall back to a timed bubble,
     // and focus now since there is no utterance start to cut on

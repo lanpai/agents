@@ -21,14 +21,25 @@ export const say: SimTool = {
             type: "string",
             description: "What to say, under 15 words, kept short and natural",
           },
+          delivery: {
+            type: "string",
+            description:
+              'How the line is spoken, in a few words (e.g. "flat and cold", "rushed and panicky, rising at the end", "almost a whisper")',
+          },
         },
-        required: ["message"],
+        required: ["message", "delivery"],
       },
     };
   },
   execute(humanoid, world, input) {
     if (typeof input.message === "string" && input.message.length > 0) {
-      humanoid.say(input.message, world, simNow(), "say");
+      humanoid.say(
+        input.message,
+        world,
+        simNow(),
+        "say",
+        typeof input.delivery === "string" ? input.delivery : undefined,
+      );
       // quiet: the camera cut comes from say() when the voice line starts
       logQuietAction(
         `${humanoid.character.name} says: "${input.message}"`,

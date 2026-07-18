@@ -37,6 +37,18 @@ const DEEPSEEK: OpenAICompatibleConfig = {
   extraBody: { thinking: { type: "disabled" } },
 };
 
+// phoneme transcription is mechanical and latency-sensitive (it gates every
+// spoken line), so it always runs on the fast model regardless of BACKEND
+const DEEPSEEK_FLASH: OpenAICompatibleConfig = {
+  label: "deepseek-flash",
+  url: "https://api.deepseek.com/v1/chat/completions",
+  model: "deepseek-v4-flash",
+  apiKeyEnv: "DEEPSEEK_API_KEY",
+  timeoutMs: 15000,
+  maxTokensMultiplier: 1,
+  extraBody: { thinking: { type: "disabled" } },
+};
+
 // fail fast: a hung upstream request would otherwise pin a frontend decision
 // slot for the SDK default of 10 minutes
 const client = new Anthropic({ timeout: 15000, maxRetries: 1 });
@@ -187,6 +199,12 @@ Bun.serve({
         if (BACKEND === "k3") return callOpenAICompatible(KIMI, body);
         if (BACKEND === "deepseek") return callOpenAICompatible(DEEPSEEK, body);
         return callSonnet(body);
+      },
+    },
+    "/api/transcribe": {
+      POST: async (req) => {
+        const body = (await req.json()) as AgentRequest;
+        return callOpenAICompatible(DEEPSEEK_FLASH, body);
       },
     },
   },
