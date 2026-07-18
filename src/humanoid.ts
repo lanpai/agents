@@ -489,8 +489,9 @@ export class Humanoid {
             this.remember(
               `You arrived in ${roomOf(this.x, this.y).promptName}.`,
             );
-            // arrived — worth deciding what to do next soon
-            this.nextThinkAt = Math.min(this.nextThinkAt, now + 500);
+            // arrived — worth deciding what to do next soon, but with enough
+            // of a beat that anyone traveling a step behind gets here first
+            this.nextThinkAt = Math.min(this.nextThinkAt, now + 3000);
           }
         }
       }

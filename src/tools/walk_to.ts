@@ -8,7 +8,7 @@ export const walkTo: SimTool = {
   definition: (humanoid, world) => ({
     name: "walk_to",
     description:
-      "Walk to an adjacent room (through its door) or toward a humanoid in your room, following them until you decide otherwise.",
+      "Walk to an adjacent room (through its door), or to a humanoid in your room to follow them — you will trail them wherever they go, through doors into other rooms, until you stop, speak, or pick a new destination. To travel somewhere as a group, one person leads the way and the others follow them.",
     input_schema: {
       type: "object",
       properties: {

@@ -8,7 +8,7 @@ export const runTo: SimTool = {
   definition: (humanoid, world) => ({
     name: "run_to",
     description:
-      "Run to an adjacent room (through its door) or toward a humanoid in your room: twice your walking speed, but drains stamina twice as fast.",
+      "Run to an adjacent room (through its door), or to a humanoid in your room to follow them at a run — twice your walking speed, draining stamina twice as fast. A followed humanoid is trailed wherever they go, through doors into other rooms, until you stop, speak, or pick a new destination.",
     input_schema: {
       type: "object",
       properties: {

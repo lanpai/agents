@@ -33,6 +33,7 @@ Guidelines:
 - Stay in character with your character description. Wander, meet others, chat, form little social moments.
 - Stay consistent with your memory: the people you know, plans you made, threads you left open.
 - Don't stand still forever; if nothing is happening, go find someone.
+- If someone is on their way to you or you agreed to meet, give them a moment to arrive before wandering off to look for them.
 - Do not make up observations of the world around you, all you can see is what is prompted to you.
 - Do not pretend to interact with objects you are not explicitly told are visible to you.
 
@@ -333,20 +334,24 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   } else {
     for (const other of visible) {
       const distance = Math.hypot(other.x - humanoid.x, other.y - humanoid.y);
+      const followingMe = other.followName === humanoid.character.name;
+      // a follower who has caught up is not "standing still" — they're still
+      // attached, and the viewer needs to know walking away brings them along
       let entry = `You see ${other.character.name} ${
         other.dead
           ? "lying dead on the ground"
-          : other.isMoving()
-            ? other.followName
-              ? `following ${
-                  other.followName === humanoid.character.name
-                    ? "you"
-                    : other.followName
-                }`
-              : "moving"
-            : "standing still"
+          : other.followName
+            ? `${other.isMoving() ? "following" : "staying beside"} ${
+                followingMe ? "you" : other.followName
+              }`
+            : other.isMoving()
+              ? "moving"
+              : "standing still"
       } in the room with you, ${formatFeet(distance)} away`;
       if (other.speech) entry += `, saying "${other.speech.text}"`;
+      if (!other.dead && followingMe)
+        entry +=
+          ". They will come along wherever you go — to travel together, simply lead the way";
 
       lines.push("", entry, other.character.describeHumanoid(other, humanoid));
 
@@ -354,6 +359,33 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
         const description = status.describeStatus(other, humanoid);
         if (description) lines.push(description);
       }
+    }
+  }
+
+  // travelers one room away and headed here are visible intent: without
+  // this, whoever arrives first sees an empty room and doubles back to look
+  // for the very person who is seconds behind them
+  for (const other of world) {
+    if (other === humanoid || other.dead) continue;
+    const otherRoom = roomOf(other.x, other.y);
+    if (otherRoom === room || !room.doors.includes(otherRoom.name)) continue;
+    if (other.followName === humanoid.character.name) {
+      lines.push(
+        "",
+        `${other.character.name} is following you and about to enter from ${otherRoom.promptName}.`,
+      );
+      continue;
+    }
+    if (!other.target) continue;
+    const end =
+      other.pendingPath.length > 0
+        ? other.pendingPath[other.pendingPath.length - 1]!
+        : other.target;
+    if (roomOf(end.x, end.y) === room) {
+      lines.push(
+        "",
+        `${other.character.name} is about to enter the room from ${otherRoom.promptName}.`,
+      );
     }
   }
 
