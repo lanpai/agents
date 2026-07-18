@@ -8,8 +8,6 @@ export class Alcoholic extends Status {
   describeStatus(humanoid: Humanoid, viewer: Humanoid) {
     if (humanoid !== viewer) return null;
 
-    console.log(humanoid.statuses);
-
     if (humanoid.statuses.has("Wasted")) {
       return "Your alcoholism feels well satisfied for the time being with all of these drinks. You feel ecstatic.";
     }
