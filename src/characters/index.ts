@@ -1,3 +1,4 @@
+import { divineRight } from "./divineRight";
 import { eveningWhiskey } from "./eveningWhiskey";
 import { luckyInLove } from "./luckyInLove";
 import { oldFashioned } from "./oldFashioned";
@@ -7,6 +8,7 @@ import { texasTea } from "./texasTea";
 import type { Character } from "./types";
 
 export const CHARACTERS: Character[] = [
+  divineRight,
   eveningWhiskey,
   luckyInLove,
   oldFashioned,

@@ -1,5 +1,4 @@
 import { simNow } from "../time";
-import { logQuietAction } from "../log";
 import { roommateNames } from "./shared";
 import type { SimTool } from "./types";
 
@@ -40,11 +39,7 @@ export const yell: SimTool = {
         "yell",
         typeof input.delivery === "string" ? input.delivery : undefined,
       );
-      // quiet: the camera cut comes from say() when the voice line starts
-      logQuietAction(
-        `${humanoid.character.name} yells: "${input.message}"`,
-        humanoid,
-      );
+      // logging happens inside say(), with the line the world actually hears
     }
   },
 };

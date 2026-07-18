@@ -6,7 +6,7 @@ export const punch: SimTool = {
   name: "punch",
   definition: {
     name: "punch",
-    description: `Punch a humanoid within arm's reach (${formatFeet(TOUCH_RANGE)}), dealing ${PUNCH_DAMAGE}% damage to the chosen body part.`,
+    description: `Punch a humanoid in your room, dealing ${PUNCH_DAMAGE}% damage to the chosen body part. If they're beyond arm's reach (${formatFeet(TOUCH_RANGE)}) you walk up to them first, and the blow lands when you reach them.`,
     input_schema: {
       type: "object",
       properties: {

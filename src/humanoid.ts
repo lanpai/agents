@@ -8,7 +8,7 @@ import {
   wrapText,
 } from "./locations";
 import type { Item } from "./interactables/types";
-import { logAction } from "./log";
+import { logAction, logEmote, logQuietAction } from "./log";
 import {
   camera,
   focusCamera,
@@ -19,6 +19,7 @@ import { speak } from "./tts";
 import { simNow } from "./time";
 import type { Character } from "./characters/types";
 import type { Status } from "./statuses/types";
+import { DivineMadness } from "./statuses/divineMadness";
 
 export const UNITS_PER_FOOT = 10;
 
@@ -33,6 +34,8 @@ export const TOUCH_RANGE = 20;
 export const PUNCH_DAMAGE = 20;
 export const STAB_DAMAGE = 100;
 export const PUSH_DISTANCE = 16;
+
+export type StrikeVerb = { present: string; past: string };
 
 export const BODY_PARTS = [
   "head",
@@ -121,6 +124,25 @@ export function updateEmoteHolds(world: Humanoid[], dt: number) {
   }
 }
 
+// speech filters contributed by statuses (e.g. Divine Madness): the first
+// status offering a warp wins. Outgoing rewrites what the world hears when
+// this humanoid speaks; incoming rewrites what this humanoid hears
+function outgoingSpeechWarp(speaker: Humanoid) {
+  for (const status of speaker.statuses.values()) {
+    if (status instanceof DivineMadness)
+      return status.warpOutgoingSpeech.bind(status);
+  }
+  return null;
+}
+
+function incomingSpeechWarp(hearer: Humanoid) {
+  for (const status of hearer.statuses.values()) {
+    if (status instanceof DivineMadness)
+      return status.warpIncomingSpeech.bind(status);
+  }
+  return null;
+}
+
 // where to actually stop when walking to a point someone is already standing
 // on: the first spot on a ring of nearby points that is open and still inside
 // the same room — or the original point when it's free or everywhere nearby
@@ -186,6 +208,14 @@ export class Humanoid {
   target: { x: number; y: number } | null = null;
   pendingPath: { x: number; y: number }[] = []; // waypoints after the current target
   followName: string | null = null;
+  // a blow queued from too far away: the pursuit is a follow, and update()
+  // lands the strike the moment the target is within arm's reach
+  pendingStrike: {
+    target: string;
+    part: BodyPart;
+    damage: number;
+    verb: StrikeVerb;
+  } | null = null;
   speech: { text: string; until: number } | null = null;
   emote: { text: string } | null = null; // *action* bubble, lives as long as its hold
   // freezes the room until the camera has watched the emote (wall-time seconds)
@@ -242,6 +272,38 @@ export class Humanoid {
 
     // talking roots you in place: any walk or follow in progress is dropped
     this.standStill();
+    // the speaker remembers what they meant to say, even when a status warps
+    // what actually leaves their mouth
+    this.remember(
+      verb === "yell" ? `You yelled: "${text}"` : `You said: "${text}"`,
+    );
+
+    const warp = outgoingSpeechWarp(this);
+    if (!warp) {
+      this.deliverLine(text, world, now, verb, delivery);
+      return;
+    }
+    // hold the room frozen while the line is being warped, exactly like a
+    // queued voice line; delivery re-arms the flag when it lands
+    this.speaking = true;
+    warp(text)
+      .catch(() => text)
+      .then((warped) => {
+        this.speaking = false;
+        if (this.dead) return;
+        this.deliverLine(warped, world, simNow(), verb, delivery);
+      });
+  }
+
+  // the world-facing half of speaking: bubble, voice, log, and what everyone
+  // in earshot hears (each hearer's own statuses may warp it once more)
+  private deliverLine(
+    text: string,
+    world: Humanoid[],
+    now: number,
+    verb: "say" | "yell",
+    delivery?: string,
+  ) {
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
     const spoken = speak(text, {
@@ -269,8 +331,9 @@ export class Humanoid {
       this.speech = { text, until: now + 4000 + text.length * 60 };
       focusCamera([this]);
     }
-    this.remember(
-      verb === "yell" ? `You yelled: "${text}"` : `You said: "${text}"`,
+    logQuietAction(
+      `${this.character.name} ${verb === "yell" ? "yells" : "says"}: "${text}"`,
+      this,
     );
     // walls scope sound: talking reaches your room, yelling also reaches adjacent rooms
     const myRoom = roomOf(this.x, this.y);
@@ -280,11 +343,21 @@ export class Humanoid {
       const sameRoom = otherRoom === myRoom;
       const adjacent = myRoom.doors.includes(otherRoom.name);
       if (!sameRoom && !(verb === "yell" && adjacent)) continue;
-      other.remember(
+      const compose = (heard: string) =>
         sameRoom
-          ? `You heard ${this.character.name} ${verb}: "${text}"`
-          : `You heard ${this.character.name} yell from ${myRoom.promptName}: "${text}"`,
-      );
+          ? `You heard ${this.character.name} ${verb}: "${heard}"`
+          : `You heard ${this.character.name} yell from ${myRoom.promptName}: "${heard}"`;
+      const hearWarp = incomingSpeechWarp(other);
+      if (hearWarp) {
+        // the hearer's own filter rewrites the line before it lands in memory
+        hearWarp(text, this.character.name)
+          .catch(() => text)
+          .then((heard) => {
+            if (!other.dead) other.remember(compose(heard));
+          });
+      } else {
+        other.remember(compose(text));
+      }
       other.nextThinkAt = Math.min(
         other.nextThinkAt,
         now + HEARD_REACTION_MS + Math.random() * 2000,
@@ -305,6 +378,7 @@ export class Humanoid {
     this.target = first;
     this.pendingPath = rest;
     this.followName = null;
+    this.pendingStrike = null; // a new order drops any queued blow
     this.running = running;
     const gait = running ? "running" : "walking";
     this.remember(`You started ${gait} to ${roomPromptName}.`);
@@ -315,6 +389,7 @@ export class Humanoid {
     this.followName = name;
     this.target = null;
     this.pendingPath = [];
+    this.pendingStrike = null; // a new order drops any queued blow
     this.running = running;
     const gait = running ? "running" : "walking";
     this.remember(`You started ${gait} toward ${name}.`);
@@ -343,6 +418,7 @@ export class Humanoid {
     this.target = null;
     this.pendingPath = [];
     this.followName = null;
+    this.pendingStrike = null; // dropping the pursuit drops the queued blow
     this.running = false;
   }
 
@@ -352,6 +428,40 @@ export class Humanoid {
     this.unconsolidated.push(event);
     if (this.unconsolidated.length > UNCONSOLIDATED_LIMIT)
       this.unconsolidated.shift();
+  }
+
+  // the moment a blow connects: witnesses see it, damage lands, both parties
+  // remember (witnesses first, so a possible death broadcast lands after the
+  // strike in their memory)
+  landStrike(
+    target: Humanoid,
+    part: BodyPart,
+    damage: number,
+    verb: StrikeVerb,
+    world: Humanoid[],
+    now: number,
+  ) {
+    const room = roomOf(target.x, target.y);
+    for (const witness of world) {
+      if (witness === this || witness === target || witness.dead) continue;
+      if (roomOf(witness.x, witness.y) !== room) continue;
+      witness.remember(
+        `You saw ${this.character.name} ${verb.past} ${target.character.name}'s ${part}!`,
+      );
+      witness.nextThinkAt = Math.min(witness.nextThinkAt, now + 500);
+    }
+
+    target.takeDamage(part, damage, world, now);
+    this.remember(`You ${verb.past} ${target.character.name}'s ${part}.`);
+    if (!target.dead) {
+      target.remember(`${this.character.name} ${verb.past} your ${part}!`);
+      target.nextThinkAt = Math.min(target.nextThinkAt, now + 500);
+    }
+    logEmote(
+      `${this.character.name} ${verb.present} ${target.character.name}'s ${part}`,
+      this,
+      target,
+    );
   }
 
   takeDamage(part: BodyPart, amount: number, world: Humanoid[], now: number) {
@@ -371,6 +481,7 @@ export class Humanoid {
     this.target = null;
     this.pendingPath = [];
     this.followName = null;
+    this.pendingStrike = null;
     this.speech = null;
     const myRoom = roomOf(this.x, this.y);
     // whatever they carried spills onto the body
@@ -515,6 +626,27 @@ export class Humanoid {
 
     this.x += this.vx * dt;
     this.y += this.vy * dt;
+
+    // a queued blow lands the moment its target is within arm's reach
+    if (this.pendingStrike) {
+      const pending = this.pendingStrike;
+      const target = world.find(
+        (other) => other !== this && other.character.name === pending.target,
+      );
+      if (!target || target.dead) {
+        this.standStill(); // the pursuit lost its point (clears the blow too)
+      } else if (
+        Math.hypot(target.x - this.x, target.y - this.y) <= TOUCH_RANGE
+      ) {
+        // stop silently — the strike memory itself explains the halt
+        this.pendingStrike = null;
+        this.target = null;
+        this.pendingPath = [];
+        this.followName = null;
+        this.running = false;
+        this.landStrike(target, pending.part, pending.damage, pending.verb, world, now);
+      }
+    }
 
     // room transitions are witnessed: the room left behind sees where you
     // went, the room entered sees where you came from

@@ -240,7 +240,7 @@ async function phonemize(line: Line): Promise<string> {
     tools: [PHONEME_TOOL.name],
   });
   try {
-    const response = await fetch("/api/transcribe", {
+    const response = await fetch("/api/flash", {
       method: "POST",
       headers: { "content-type": "application/json" },
       signal: AbortSignal.timeout(PHONEME_TIMEOUT_MS),

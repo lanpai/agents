@@ -2,7 +2,7 @@
 
 export type AgentCall = {
   humanoid: string;
-  kind: "decision" | "memory" | "phonemes";
+  kind: "decision" | "memory" | "phonemes" | "warp";
   messages: string; // the user prompt sent
   tools: string[]; // tool names offered
   result: string[]; // tool calls returned (or the error)
@@ -10,7 +10,7 @@ export type AgentCall = {
   at: number; // wall-clock, display only
 };
 
-const MAX_CALLS = 20;
+const MAX_CALLS = 80;
 
 export const agentCalls: AgentCall[] = [];
 

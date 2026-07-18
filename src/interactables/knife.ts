@@ -20,7 +20,7 @@ export class Knife extends Item {
         name: "stab",
         definition: {
           name: "stab",
-          description: `Stab a humanoid within arm's reach (${formatFeet(TOUCH_RANGE)}) with your knife, dealing ${STAB_DAMAGE}% damage to the chosen body part.`,
+          description: `Stab a humanoid in your room with your knife, dealing ${STAB_DAMAGE}% damage to the chosen body part. If they're beyond arm's reach (${formatFeet(TOUCH_RANGE)}) you walk up to them first, and the blow lands when you reach them.`,
           input_schema: {
             type: "object",
             properties: {

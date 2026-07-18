@@ -131,6 +131,17 @@ export function initSidebar(options: {
 
     callsSection.innerHTML = "";
     for (const call of [...agentCalls].reverse()) {
+      if (
+        selected.size !== 0 &&
+        !selected
+          .values()
+          .some(
+            (selectedHumanoid) =>
+              selectedHumanoid.character.name === call.humanoid,
+          )
+      )
+        continue;
+
       const key = `${call.at}-${call.humanoid}`;
       const details = document.createElement("details");
       details.open = openCalls.has(key);

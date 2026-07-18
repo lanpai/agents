@@ -3,6 +3,7 @@ import {
   TOUCH_RANGE,
   type BodyPart,
   type Humanoid,
+  type StrikeVerb,
 } from "../humanoid";
 import {
   doorApproach,
@@ -35,15 +36,28 @@ export function strike(
   world: Humanoid[],
   input: Record<string, unknown>,
   damage: number,
-  verb: { present: string; past: string },
+  verb: StrikeVerb,
 ) {
-  const result = reachableTarget(humanoid, world, input.target);
-  if ("reason" in result) {
+  const verbBase = verb.present.replace(/e?s$/, "");
+  const target = world.find(
+    (other) => other !== humanoid && other.character.name === input.target,
+  );
+  if (!target || roomOf(target.x, target.y) !== roomOf(humanoid.x, humanoid.y)) {
     humanoid.remember(
-      `You tried to ${verb.present.replace(/e?s$/, "")} ${input.target}, but ${result.reason}.`,
+      `You tried to ${verbBase} ${input.target}, but you don't see them here.`,
     );
     logAction(
-      `${humanoid.character.name} tries to attack ${input.target} (${result.reason})`,
+      `${humanoid.character.name} tries to attack ${input.target} (not here)`,
+      humanoid,
+    );
+    return;
+  }
+  if (target.dead) {
+    humanoid.remember(
+      `You tried to ${verbBase} ${target.character.name}, but they are already dead.`,
+    );
+    logAction(
+      `${humanoid.character.name} tries to attack ${target.character.name} (already dead)`,
       humanoid,
     );
     return;
@@ -53,35 +67,29 @@ export function strike(
   )
     ? (input.body_part as BodyPart)
     : "torso";
-  const now = simNow();
 
-  // everyone else in the room witnesses the strike (before takeDamage, so a
-  // possible death broadcast lands after it in their memory)
-  const room = roomOf(result.target.x, result.target.y);
-  for (const witness of world) {
-    if (witness === humanoid || witness === result.target || witness.dead)
-      continue;
-    if (roomOf(witness.x, witness.y) !== room) continue;
-    witness.remember(
-      `You saw ${humanoid.character.name} ${verb.past} ${result.target.character.name}'s ${part}!`,
-    );
-    witness.nextThinkAt = Math.min(witness.nextThinkAt, now + 500);
+  if (Math.hypot(target.x - humanoid.x, target.y - humanoid.y) <= TOUCH_RANGE) {
+    humanoid.landStrike(target, part, damage, verb, world, simNow());
+    return;
   }
 
-  result.target.takeDamage(part, damage, world, now);
+  // out of arm's reach: close the distance first — the follow pursues them
+  // (through doors if it comes to that) and update() lands the queued blow
+  // the moment they're in range
+  humanoid.followHumanoid(target.character.name, world, false);
+  humanoid.pendingStrike = {
+    target: target.character.name,
+    part,
+    damage,
+    verb,
+  };
   humanoid.remember(
-    `You ${verb.past} ${result.target.character.name}'s ${part}.`,
+    `${target.character.name} is out of arm's reach — you close in to ${verbBase} them.`,
   );
-  if (!result.target.dead) {
-    result.target.remember(
-      `${humanoid.character.name} ${verb.past} your ${part}!`,
-    );
-    result.target.nextThinkAt = Math.min(result.target.nextThinkAt, now + 500);
-  }
-  logEmote(
-    `${humanoid.character.name} ${verb.present} ${result.target.character.name}'s ${part}`,
+  logAction(
+    `${humanoid.character.name} moves in to ${verbBase} ${target.character.name}`,
     humanoid,
-    result.target,
+    target,
   );
 }
 

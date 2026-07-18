@@ -37,8 +37,9 @@ const DEEPSEEK: OpenAICompatibleConfig = {
   extraBody: { thinking: { type: "disabled" } },
 };
 
-// phoneme transcription is mechanical and latency-sensitive (it gates every
-// spoken line), so it always runs on the fast model regardless of BACKEND
+// small utility calls (phoneme transcription, speech warping) are mechanical
+// and latency-sensitive, so they always run on the fast model regardless of
+// BACKEND
 const DEEPSEEK_FLASH: OpenAICompatibleConfig = {
   label: "deepseek-flash",
   url: "https://api.deepseek.com/v1/chat/completions",
@@ -201,7 +202,7 @@ Bun.serve({
         return callSonnet(body);
       },
     },
-    "/api/transcribe": {
+    "/api/flash": {
       POST: async (req) => {
         const body = (await req.json()) as AgentRequest;
         return callOpenAICompatible(DEEPSEEK_FLASH, body);
