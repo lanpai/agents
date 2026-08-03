@@ -9,4 +9,5 @@ export const upstairsOffice = new Room({
   h: 75,
   doors: ["Kitchen"],
   interactables: [],
+  floor: "wood",
 });

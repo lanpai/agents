@@ -13,6 +13,7 @@ import {
 import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
+import { PALETTE } from "./theme";
 import { cory } from "./characters/cory";
 import { leland } from "./characters/leland";
 
@@ -64,10 +65,28 @@ function resize() {
   canvas.height = window.innerHeight * dpr;
 }
 
+// screen-space falloff toward the corners; sits under the UI so text stays flat
+function drawVignette(ctx: CanvasRenderingContext2D) {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const gradient = ctx.createRadialGradient(
+    w / 2,
+    h / 2,
+    Math.min(w, h) * 0.35,
+    w / 2,
+    h / 2,
+    Math.hypot(w, h) / 2,
+  );
+  gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+  gradient.addColorStop(1, "rgba(0, 0, 0, 0.45)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+}
+
 function draw(now: number) {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = PALETTE.void;
   ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
   ctx.translate(window.innerWidth / 2, window.innerHeight / 2);
@@ -89,6 +108,7 @@ function draw(now: number) {
 
   // screen-space UI
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawVignette(ctx);
   drawSelectionBox(ctx);
   if (isSidebarOpen()) drawLog(ctx, selected);
 }
