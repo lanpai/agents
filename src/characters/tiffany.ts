@@ -1,3 +1,5 @@
+import { addStatusToHumanoid } from "../statuses";
+import { MaimaiPlayer } from "../statuses/maimaiPlayer";
 import type { Character } from "./types";
 
 export const tiffany: Character = {
@@ -13,4 +15,8 @@ export const tiffany: Character = {
   },
   initialMemory: "",
   describeHumanoid: () => "",
+
+  onInit: (humanoid) => {
+    addStatusToHumanoid(humanoid, MaimaiPlayer);
+  },
 };

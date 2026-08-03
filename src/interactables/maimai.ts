@@ -1,6 +1,7 @@
 import type { Humanoid } from "../humanoid";
 import { roomOf } from "../locations";
 import { logEmote } from "../log";
+import { MaimaiPlayer } from "../statuses/maimaiPlayer";
 import type { SimTool } from "../tools";
 import { approachAndUse } from "../tools/shared";
 import { Interactable } from "./types";
@@ -24,6 +25,12 @@ export class Maimai extends Interactable {
         execute(humanoid, world) {
           const play = () => {
             const room = roomOf(humanoid.x, humanoid.y);
+
+            // playing satisfies a maimai craving
+            const craving = humanoid.statuses.get("Maimai Player");
+            if (craving instanceof MaimaiPlayer) {
+              craving.timeSinceLastPlayed = 0;
+            }
 
             humanoid.remember(
               "You played a game of maimai on the maimai DX cabinet.",
