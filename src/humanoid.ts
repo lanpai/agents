@@ -19,7 +19,6 @@ import { speak } from "./tts";
 import { simNow } from "./time";
 import type { Character } from "./characters/types";
 import type { Status } from "./statuses/types";
-import { DivineMadness } from "./statuses/divineMadness";
 
 export const UNITS_PER_FOOT = 10;
 
@@ -128,18 +127,10 @@ export function updateEmoteHolds(world: Humanoid[], dt: number) {
 // status offering a warp wins. Outgoing rewrites what the world hears when
 // this humanoid speaks; incoming rewrites what this humanoid hears
 function outgoingSpeechWarp(speaker: Humanoid) {
-  for (const status of speaker.statuses.values()) {
-    if (status instanceof DivineMadness)
-      return status.warpOutgoingSpeech.bind(status);
-  }
   return null;
 }
 
 function incomingSpeechWarp(hearer: Humanoid) {
-  for (const status of hearer.statuses.values()) {
-    if (status instanceof DivineMadness)
-      return status.warpIncomingSpeech.bind(status);
-  }
   return null;
 }
 
@@ -644,7 +635,14 @@ export class Humanoid {
         this.pendingPath = [];
         this.followName = null;
         this.running = false;
-        this.landStrike(target, pending.part, pending.damage, pending.verb, world, now);
+        this.landStrike(
+          target,
+          pending.part,
+          pending.damage,
+          pending.verb,
+          world,
+          now,
+        );
       }
     }
 

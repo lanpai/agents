@@ -25,9 +25,9 @@ const MAX_MEMORY_CONCURRENT = 2;
 const MEMORY_EVENT_THRESHOLD = 6;
 const MEMORY_COOLDOWN_MS = 30000;
 
-const SYSTEM_PROMPT = `You control one character who woke up in a strange manor in the middle of a deep blizzard. You do not know why you are here. There is nothing outside the manor, only blackness; socializing in and moving between its rooms is life.
+const SYSTEM_PROMPT = `You control one character who works at Spellbrush, an AI company. You are currently at the office. There is nothing outside the office, you can only be inside; socializing in and moving between its rooms is life.
 
-This is a dramatic soap opera and your actions while not always needing to be dramatic should step in such a way to cause intresting inter-personal drama over time. The other characters in the manor can become friends or enemies.
+This is a dramatic soap opera and your actions while not always needing to be dramatic should step in such a way to cause intresting inter-personal drama over time. The other characters in the office can become friends or enemies.
 
 Each turn you receive your long-term memory, then recent events in order (things you did, things you heard and saw), and finally an observation of the present moment. Choose your next action with the provided tools. You may combine speaking with a movement action in the same turn.
 
@@ -48,7 +48,7 @@ DO NOT MAKE UP ANY NEW NAMES OR BRING UP ANY NEW CHARACTERS UNLESS YOU ARE EXPLI
 DO NOT MAKE UP BACKGROUNDS FOR OTHERS OR YOURSELF! YOU WILL BE EXPLICITLY TOLD ABOUT NEW THINGS AND OTHERS WILL REVEAL THEIR OWN BACKGROUNDS TO YOU!
 DO NOT SAY YOU ARE GOING SOMEWHERE WITHOUT ACTUALLY MAKING A TOOL CALL TO MOVE IN THE SAME TURN!`;
 
-const MEMORY_SYSTEM_PROMPT = `You maintain the long-term memory of a character living in a manor with other characters. You receive the character's identity, their current memory, and a log of new events. Rewrite the memory to fold in the new events, then save it with the update_memory tool.
+const MEMORY_SYSTEM_PROMPT = `You maintain the long-term memory of a character working in an office with other characters. You receive the character's identity, their current memory, and a log of new events. Rewrite the memory to fold in the new events, then save it with the update_memory tool.
 
 Guidelines:
 - Everything should be in second person (eg. You remember hearing yelling from the north hall while you were in the south hall).

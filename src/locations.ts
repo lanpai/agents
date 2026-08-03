@@ -153,8 +153,10 @@ export function drawHouse(ctx: CanvasRenderingContext2D) {
   ctx.save();
 
   ctx.strokeStyle = "#000";
+  ctx.fillStyle = "#fff";
   ctx.lineWidth = 2;
   for (const room of ROOMS) {
+    ctx.fillRect(room.x, room.y, room.w, room.h);
     ctx.strokeRect(room.x, room.y, room.w, room.h);
   }
 

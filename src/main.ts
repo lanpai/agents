@@ -1,4 +1,5 @@
 import { maybeUpdateMemory, scheduleThinking } from "./agent";
+import { initBetting } from "./betting";
 import { camera, initCameraControls, updateCamera } from "./camera";
 import { frozenRooms, Humanoid, updateEmoteHolds } from "./humanoid";
 import { drawHouse, ROOMS, roomOf } from "./locations";
@@ -12,6 +13,7 @@ import {
 import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
+import { cory } from "./characters/cory";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -20,13 +22,7 @@ initCameraControls(canvas);
 
 const humanoids = loadHumanoids();
 if (humanoids.length === 0) {
-  // humanoids.push(new Humanoid(eveningWhiskey, 20, 0));
-  // humanoids.push(new Humanoid(secondOpinion, 165, -280)); // the refrigerator room
-  // humanoids.push(new Humanoid(luckyInLove, -190, 60));
-  // humanoids.push(new Humanoid(oldFashioned, -220, 60));
-  // humanoids.push(new Humanoid(texasTea, -190, 160));
-  // humanoids.push(new Humanoid(partingShot, -390, -60)); // the porch
-  // humanoids.push(new Humanoid(divineRight, -285, -235)); // the library
+  humanoids.push(new Humanoid(cory, -500, 100));
 }
 
 // places saved items into rooms and carrying arrays; when no save exists,
@@ -58,6 +54,7 @@ initSidebar({
   },
   clearData,
 });
+initBetting(humanoids);
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;

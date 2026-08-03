@@ -1,14 +1,12 @@
 import type { Humanoid } from "../humanoid";
 import type { Room } from "../rooms/types";
 import { Knife } from "./knife";
-import { PackOfCigarettes } from "./packOfCigarettes";
 import { Interactable, Item } from "./types";
-import { Wine } from "./wine";
 
 type NonAbstractItem = Pick<typeof Item, keyof typeof Item> &
   (new (...args: any[]) => Item);
 
-const ITEM_CLASSES: NonAbstractItem[] = [Knife, Wine, PackOfCigarettes];
+const ITEM_CLASSES: NonAbstractItem[] = [Knife];
 
 // keyed by each item's display name (what saves store), not the class name —
 // e.g. "Pack of Cigarettes", not "PackOfCigarettes"
