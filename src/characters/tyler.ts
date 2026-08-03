@@ -1,3 +1,5 @@
+import { addStatusToHumanoid } from "../statuses";
+import { DDRPlayer } from "../statuses/ddrPlayer";
 import { sheet, type Character } from "./types";
 
 export const tyler: Character = {
@@ -17,4 +19,8 @@ export const tyler: Character = {
   },
   initialMemory: "",
   describeHumanoid: () => "",
+
+  onInit: (humanoid) => {
+    addStatusToHumanoid(humanoid, DDRPlayer);
+  },
 };
