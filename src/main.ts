@@ -1,13 +1,5 @@
 import { maybeUpdateMemory, scheduleThinking } from "./agent";
 import { camera, initCameraControls, updateCamera } from "./camera";
-import { divineRight } from "./characters/divineRight";
-import { eveningWhiskey } from "./characters/eveningWhiskey";
-import { luckyInLove } from "./characters/luckyInLove";
-import { oldFashioned } from "./characters/oldFashioned";
-import { partingShot } from "./characters/partingShot";
-import { secondOpinion } from "./characters/secondOpinion";
-import { texasTea } from "./characters/texasTea";
-import { initGodVoice } from "./godVoice";
 import { frozenRooms, Humanoid, updateEmoteHolds } from "./humanoid";
 import { drawHouse, ROOMS, roomOf } from "./locations";
 import { drawLog } from "./log";
@@ -28,13 +20,13 @@ initCameraControls(canvas);
 
 const humanoids = loadHumanoids();
 if (humanoids.length === 0) {
-  humanoids.push(new Humanoid(eveningWhiskey, 20, 0));
-  humanoids.push(new Humanoid(secondOpinion, 165, -280)); // the refrigerator room
-  humanoids.push(new Humanoid(luckyInLove, -190, 60));
-  humanoids.push(new Humanoid(oldFashioned, -220, 60));
-  humanoids.push(new Humanoid(texasTea, -190, 160));
-  humanoids.push(new Humanoid(partingShot, -390, -60)); // the porch
-  humanoids.push(new Humanoid(divineRight, -285, -235)); // the library
+  // humanoids.push(new Humanoid(eveningWhiskey, 20, 0));
+  // humanoids.push(new Humanoid(secondOpinion, 165, -280)); // the refrigerator room
+  // humanoids.push(new Humanoid(luckyInLove, -190, 60));
+  // humanoids.push(new Humanoid(oldFashioned, -220, 60));
+  // humanoids.push(new Humanoid(texasTea, -190, 160));
+  // humanoids.push(new Humanoid(partingShot, -390, -60)); // the porch
+  // humanoids.push(new Humanoid(divineRight, -285, -235)); // the library
 }
 
 // places saved items into rooms and carrying arrays; when no save exists,
@@ -66,7 +58,6 @@ initSidebar({
   },
   clearData,
 });
-initGodVoice(humanoids);
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
