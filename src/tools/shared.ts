@@ -42,7 +42,10 @@ export function strike(
   const target = world.find(
     (other) => other !== humanoid && other.character.name === input.target,
   );
-  if (!target || roomOf(target.x, target.y) !== roomOf(humanoid.x, humanoid.y)) {
+  if (
+    !target ||
+    roomOf(target.x, target.y) !== roomOf(humanoid.x, humanoid.y)
+  ) {
     humanoid.remember(
       `You tried to ${verbBase} ${input.target}, but you don't see them here.`,
     );

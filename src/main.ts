@@ -184,15 +184,16 @@ function draw(now: number) {
   // painter's order: lower on screen draws in front
   const sortedHumanoids = [...humanoids].sort((a, b) => a.y - b.y);
   for (const humanoid of sortedHumanoids) humanoid.drawUnderlay(ctx, now);
-  for (const humanoid of sortedHumanoids)
-    if (!humanoid.dead) humanoid.draw(ctx);
 
   for (const room of ROOMS) {
     for (const interactable of room.interactables) interactable.draw(ctx);
   }
 
-  // a body is the loudest thing in the room: it draws over the living and over
-  // the furniture, so it can never be lost behind whoever is standing there
+  for (const humanoid of sortedHumanoids)
+    if (!humanoid.dead) humanoid.draw(ctx);
+
+  // a body is the loudest thing in the room: it draws over the living as well
+  // as the furniture, so it can never be lost behind whoever is standing there
   for (const humanoid of sortedHumanoids) if (humanoid.dead) humanoid.draw(ctx);
 
   for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx);
@@ -212,7 +213,9 @@ function frame(wallNow: number) {
   last = wallNow;
   if (isCutscenePlaying()) {
     // a cutscene freezes every room: sim time holds still, nobody thinks or
-    // moves, and the cutscene drives the camera itself
+    // moves, and the cutscene drives the camera itself. One-shot animations
+    // still run — a stab scene IS its swing and collapse
+    updateActions(humanoids, dt);
     updateCutscene(dt);
   } else {
     if (!paused) {
