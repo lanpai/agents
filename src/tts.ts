@@ -23,7 +23,14 @@ type Line = {
   onEnd?: () => void;
 };
 
-const queue: Line[] = [];
+// a silent beat: an *action* bubble holding the screen like a spoken line
+type Beat = {
+  silentMs: number;
+  onStart?: () => void;
+  onEnd?: () => void;
+};
+
+const queue: (Line | Beat)[] = [];
 let queued = 0; // lines waiting or playing
 let playing = false;
 
@@ -81,33 +88,56 @@ export function speak(
   return true;
 }
 
+// queue a silent beat: it takes the same one-at-a-time slot as a spoken line
+// (so actions and dialogue never share the screen) but plays no audio.
+// Returns false when the queue is full, so the caller can fall back to an
+// instant bubble.
+export function queueBeat(
+  silentMs: number,
+  callbacks: { onStart?: () => void; onEnd?: () => void },
+): boolean {
+  if (queued >= MAX_QUEUE) return false;
+  queued++;
+  queue.push({ silentMs, ...callbacks });
+  void pump();
+  return true;
+}
+
 // plays the queue one line at a time: transcribe, compile, post the schedule
 // to the worklet, and hold until the compiled duration has elapsed
 async function pump() {
   if (playing) return;
-  const line = queue.shift();
-  if (!line) return;
+  const item = queue.shift();
+  if (!item) return;
   playing = true;
 
-  // if transcription or audio setup fails the line goes unvoiced, but the
-  // bubble and the speaking flag still need a lifetime: fall back to reading time
-  let durationMs = 2000 + line.text.length * 60;
-  try {
-    if (!audioReady) throw new Error("audio not unlocked");
-    const [audio, phonemes] = await Promise.all([audioReady, phonemize(line)]);
-    const { schedule, totalMs } = compileString(phonemes, {
-      ...line.voice,
-      rate: clampRate(line.voice.rate),
-    });
-    audio.gain.gain.value = line.volume;
-    audio.node.port.postMessage({ type: "schedule", schedule });
-    durationMs = totalMs;
-  } catch {
-    // unvoiced line: onStart/onEnd below still run the timed bubble
+  let durationMs: number;
+  if ("silentMs" in item) {
+    durationMs = item.silentMs; // a beat holds its slot, nothing to voice
+  } else {
+    // if transcription or audio setup fails the line goes unvoiced, but the
+    // bubble and the speaking flag still need a lifetime: fall back to reading time
+    durationMs = 2000 + item.text.length * 60;
+    try {
+      if (!audioReady) throw new Error("audio not unlocked");
+      const [audio, phonemes] = await Promise.all([
+        audioReady,
+        phonemize(item),
+      ]);
+      const { schedule, totalMs } = compileString(phonemes, {
+        ...item.voice,
+        rate: clampRate(item.voice.rate),
+      });
+      audio.gain.gain.value = item.volume;
+      audio.node.port.postMessage({ type: "schedule", schedule });
+      durationMs = totalMs;
+    } catch {
+      // unvoiced line: onStart/onEnd below still run the timed bubble
+    }
   }
-  line.onStart?.();
+  item.onStart?.();
   setTimeout(() => {
-    line.onEnd?.();
+    item.onEnd?.();
     queued--;
     playing = false;
     void pump();

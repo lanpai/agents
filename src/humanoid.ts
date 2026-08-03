@@ -15,7 +15,7 @@ import {
   focusCameraOnSpeaker,
   isCameraAutoFollowing,
 } from "./camera";
-import { speak } from "./tts";
+import { queueBeat, speak } from "./tts";
 import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
 import { PALETTE, silhouette } from "./theme";
@@ -62,6 +62,13 @@ const PERSONAL_SPACE = 14; // a destination this close to someone standing there
 const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
+// how long an *action* bubble holds its slot on screen, like a spoken line
+const EMOTE_MS_BASE = 1800;
+const EMOTE_MS_PER_CHAR = 50;
+// how long a walker must actually stand still before the idle (front) row
+// takes over — waypoint handoffs (e.g. doorways) idle for a single frame,
+// and snapping to front for that frame reads as a flicker
+const IDLE_GRACE_S = 0.2;
 
 // one Image per sprite path, shared across every humanoid using it
 const spriteCache = new Map<string, HTMLImageElement>();
@@ -278,6 +285,7 @@ export class Humanoid {
   hopTilt = 0;
   facing: Facing = "front"; // which row of the walk sheet is playing
   animT = 0; // ms into the walk cycle; runs on sim time, so it stops when a room freezes
+  stillFor = IDLE_GRACE_S; // seconds since the last movement, for the idle fallback
 
   statuses = new Map<string, Status>();
 
@@ -335,21 +343,42 @@ export class Humanoid {
   }
 
   isMoving(): boolean {
-    return this.vx !== 0 || this.vy !== 0;
+    return this.vx !== 0 || this.vy !== 0 || this.pendingPath.length > 0;
   }
 
   // a small *action* bubble over the head for non-speech, non-movement acts;
   // like talking it freezes the room, and both the freeze and the bubble last
   // until the camera has seen the act
   showEmote(text: string) {
-    this.emote = { text };
-    this.emoteHold = { seenFor: 0, heldFor: 0 };
-    // the bubble displays *text*, and the subtitle keys on the display form
+    // the bubble displays *text*, and the subtitle keys on the display form;
+    // requesting at queue time gives the translation a head start
     requestSubtitle(
       this.character.name,
       roomOf(this.x, this.y).name,
       `*${text}*`,
     );
+    // actions share the spoken-line queue: they hold the screen one at a
+    // time, so an action in one room can't talk over dialogue in another
+    const beat = queueBeat(EMOTE_MS_BASE + text.length * EMOTE_MS_PER_CHAR, {
+      onStart: () => {
+        if (this.dead) return;
+        this.emote = { text };
+        // an action is a shot of its own: cut to it like a spoken line
+        focusCameraOnSpeaker(this);
+      },
+      onEnd: () => {
+        this.speaking = false;
+        if (this.emote?.text === text) this.emote = null;
+      },
+    });
+    if (beat) {
+      // freezes the room from decision to bubble-end, exactly like speech
+      this.speaking = true;
+      return;
+    }
+    // queue full: the old instant bubble, held until the camera has seen it
+    this.emote = { text };
+    this.emoteHold = { seenFor: 0, heldFor: 0 };
   }
 
   // both legs at 100% -> 1, one dead leg -> 0.5, both dead -> 0
@@ -725,7 +754,12 @@ export class Humanoid {
     // — standing still just means the front row keeps playing
     const sheet = this.character.sprite;
     this.animT = (this.animT + dt * 1000) % (sheet.frames * sheet.frameMs);
-    if (moving) this.facing = facingOf(this.vx, this.vy);
+    if (moving) {
+      this.facing = facingOf(this.vx, this.vy);
+      this.stillFor = 0;
+    } else {
+      this.stillFor += dt;
+    }
 
     // advance the hop cycle while moving; if stopped mid-hop, finish the arc to land
     if (moving || this.hopT > 0) {
@@ -825,9 +859,11 @@ export class Humanoid {
     ctx.imageSmoothingEnabled = onScreen < sheet.cell;
     ctx.imageSmoothingQuality = "high";
     const half = SPRITE_SIZE / 2;
-    // standing still means the front row, which is the idle animation
-    const facing = this.isMoving() ? this.facing : "front";
-    const frame = this.isMoving()
+    // standing still means the front row, which is the idle animation — but
+    // only after a real stop: waypoint handoffs idle for one frame mid-walk
+    const walking = this.isMoving() || this.stillFor < IDLE_GRACE_S;
+    const facing = walking ? this.facing : "front";
+    const frame = walking
       ? Math.floor(this.animT / sheet.frameMs) % sheet.frames
       : 0;
     if (this.dead) {
