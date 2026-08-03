@@ -11,7 +11,10 @@ import { Item } from "./types";
 
 export class Knife extends Item {
   name = "Knife";
-  onGroundDescription = "You see a knife that's likely used by the cook staff.";
+  onGroundDescription = (humanoid: Humanoid) =>
+    humanoid.statuses.has("Murderous Intent")
+      ? "You see a knife that could probably be used to stab someone."
+      : "You see a knife that's likely used by the cook staff.";
   inInventoryDescription = "You are carrying a knife.";
 
   override inInventoryTools(_humanoid: Humanoid): SimTool[] {
