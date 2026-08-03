@@ -15,6 +15,7 @@ export type Voice = {
 
 export type Character = {
   name: string;
+  sprite: string; // image path under public/, drawn at 16x16 world units
   description: string;
   voice: Voice;
   initialMemory: string;

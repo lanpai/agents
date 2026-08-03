@@ -61,8 +61,19 @@ const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
 
-const sprite = new Image();
-sprite.src = "/humanoid.png";
+// one Image per sprite path, shared across every humanoid using it
+const spriteCache = new Map<string, HTMLImageElement>();
+const SPRITE_SIZE = 36; // world-unit footprint every sprite is drawn at
+
+function spriteFor(src: string): HTMLImageElement {
+  let image = spriteCache.get(src);
+  if (!image) {
+    image = new Image();
+    image.src = src;
+    spriteCache.set(src, image);
+  }
+  return image;
+}
 
 // remember() an event for every living humanoid in the source's room, except
 // the source themself; pass a function to vary the text per viewer
@@ -681,14 +692,16 @@ export class Humanoid {
   }
 
   draw(ctx: CanvasRenderingContext2D) {
+    const sprite = spriteFor(this.character.sprite);
     if (!sprite.complete || sprite.naturalWidth === 0) return;
     ctx.imageSmoothingEnabled = false;
+    const half = SPRITE_SIZE / 2;
     if (this.dead) {
       ctx.save();
       ctx.translate(Math.round(this.x), Math.round(this.y));
       ctx.rotate(Math.PI / 2);
       ctx.globalAlpha = 0.5;
-      ctx.drawImage(sprite, -8, -8);
+      ctx.drawImage(sprite, -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE);
       ctx.restore();
       return;
     }
@@ -696,7 +709,7 @@ export class Humanoid {
     ctx.save();
     ctx.translate(Math.round(this.x), Math.round(this.y) - arc * HOP_HEIGHT);
     ctx.rotate(arc * this.hopTilt);
-    ctx.drawImage(sprite, -8, -8);
+    ctx.drawImage(sprite, -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE);
     ctx.restore();
   }
 

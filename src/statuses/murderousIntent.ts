@@ -1,0 +1,13 @@
+import type { Humanoid } from "../humanoid";
+import { Status } from "./types";
+
+export class MurderousIntent extends Status {
+  name = "Murderous Intent";
+  target = "";
+
+  describeStatus(humanoid: Humanoid, viewer: Humanoid) {
+    if (humanoid !== viewer) return null;
+
+    return `You are trying to kill ${this.target}. You do not want others to find out. Try leading ${this.target} away alone or otherwise try to kill them in such a way that the others won't find out you did it.`;
+  }
+}
