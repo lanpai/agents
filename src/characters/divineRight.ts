@@ -16,7 +16,7 @@ export const divineRight: Character = {
   initialMemory:
     "You have been trapped in this manor for the past month. You recently heard a lot of and believe that new visitors are staying at the manor. You think that maybe they can free you.",
   describeHumanoid: () =>
-    "Divine Right is a disheveled, middle-aged man who seems unkempt. He seems to be muttering to himself. He is wearing a leather jacket with jeans.",
+    "Divine Right is a disheveled, middle-aged man who seems unkempt. He seems to be muttering to himself and the words that come out of his mouth are crazy and not to be trusted as truth. He is wearing a leather jacket with jeans.",
 
   onInit: (humanoid) => {
     addStatusToHumanoid(humanoid, DivineMadness);

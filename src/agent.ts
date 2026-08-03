@@ -25,9 +25,9 @@ const MAX_MEMORY_CONCURRENT = 2;
 const MEMORY_EVENT_THRESHOLD = 6;
 const MEMORY_COOLDOWN_MS = 30000;
 
-const SYSTEM_PROMPT = `You control one character staying at a manor with other characters. There is nothing outside the house; socializing in and moving between its rooms is life.
+const SYSTEM_PROMPT = `You control one character who woke up in a strange manor in the middle of a deep blizzard. You do not know why you are here. There is nothing outside the manor, only blackness; socializing in and moving between its rooms is life.
 
-This is a dramatic soap opera and your actions while not always needing to be dramatic should step in such a way to cause intresting inter-personal drama over time.
+This is a dramatic soap opera and your actions while not always needing to be dramatic should step in such a way to cause intresting inter-personal drama over time. The other characters in the manor can become friends or enemies.
 
 Each turn you receive your long-term memory, then recent events in order (things you did, things you heard and saw), and finally an observation of the present moment. Choose your next action with the provided tools. You may combine speaking with a movement action in the same turn.
 

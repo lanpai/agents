@@ -23,7 +23,7 @@ export const say: SimTool = {
           delivery: {
             type: "string",
             description:
-              'How the line is spoken, in a few words (e.g. "flat and cold", "rushed and panicky, rising at the end", "almost a whisper")',
+              'How the line is spoken, in a few words (e.g. "flat and cold", "rushed and panicky, rising at the end", "almost a whisper"). This should only be vocal descriptions, not physical.',
           },
         },
         required: ["message", "delivery"],

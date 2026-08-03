@@ -23,7 +23,7 @@ export const yell: SimTool = {
           delivery: {
             type: "string",
             description:
-              'How the line is yelled, in a few words (e.g. "furious, spitting every word", "booming and jovial", "cracking with panic")',
+              'How the line is yelled, in a few words (e.g. "furious, spitting every word", "booming and jovial", "cracking with panic"). This should only be vocal descriptions, not physical.',
           },
         },
         required: ["message", "delivery"],
