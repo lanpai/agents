@@ -14,6 +14,7 @@ import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
 import { cory } from "./characters/cory";
+import { leland } from "./characters/leland";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -23,6 +24,7 @@ initCameraControls(canvas);
 const humanoids = loadHumanoids();
 if (humanoids.length === 0) {
   humanoids.push(new Humanoid(cory, -500, 100));
+  humanoids.push(new Humanoid(leland, -300, -100));
 }
 
 // places saved items into rooms and carrying arrays; when no save exists,

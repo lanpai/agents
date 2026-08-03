@@ -4,12 +4,13 @@ import { Status } from "./types";
 type NonAbstractStatus = Pick<typeof Status, keyof typeof Status> &
   (new (...args: any[]) => Status);
 
-export function addStatusToHumanoid(
+export function addStatusToHumanoid<T extends NonAbstractStatus>(
   humanoid: Humanoid,
-  status: NonAbstractStatus,
-) {
+  status: T,
+): T["prototype"] {
   const newStatus = new status(humanoid);
   humanoid.statuses.set(newStatus.name, newStatus);
+  return newStatus;
 }
 
 // statuses are class instances, so saves store only the name (plus mutable

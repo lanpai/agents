@@ -720,17 +720,14 @@ export class Humanoid {
     ctx.textAlign = "center";
     ctx.font = "9px monospace";
     ctx.fillStyle = "#999";
-    ctx.fillText(
-      this.dead ? `${this.character.name} (dead)` : this.character.name,
-      0,
-      19,
-    );
+    // ctx.fillText(
+    //   this.dead ? `${this.character.name} (dead)` : this.character.name,
+    //   0,
+    //   19,
+    // );
     if (this.thinking) {
       const dots = ".".repeat(1 + (Math.floor(now / 400) % 3));
-      const nameWidth = ctx.measureText(this.character.name).width;
-      ctx.textAlign = "left";
-      ctx.fillText(dots, nameWidth / 2 + 2, 19);
-      ctx.textAlign = "center";
+      ctx.fillText(dots, 0, 19);
     }
 
     ctx.restore();
@@ -739,7 +736,7 @@ export class Humanoid {
   // name label + speech bubble, drawn in world space so they scale with zoom
   drawOverlay(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    ctx.translate(this.x, this.y);
+    ctx.translate(this.x, this.y - 8);
 
     // bubbles stack upward from just above the head: speech first, then the
     // action emote on top when both are showing
