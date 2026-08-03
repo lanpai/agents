@@ -16,6 +16,7 @@ import {
   isCameraAutoFollowing,
 } from "./camera";
 import { speak } from "./tts";
+import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
 import { PALETTE, silhouette } from "./theme";
 import type { Character } from "./characters/types";
@@ -300,6 +301,12 @@ export class Humanoid {
   showEmote(text: string) {
     this.emote = { text };
     this.emoteHold = { seenFor: 0, heldFor: 0 };
+    // the bubble displays *text*, and the subtitle keys on the display form
+    requestSubtitle(
+      this.character.name,
+      roomOf(this.x, this.y).name,
+      `*${text}*`,
+    );
   }
 
   // both legs at 100% -> 1, one dead leg -> 0.5, both dead -> 0
@@ -352,6 +359,9 @@ export class Humanoid {
     verb: "say" | "yell",
     delivery?: string,
   ) {
+    // translation starts while the line waits in the TTS queue, so the
+    // subtitle is usually ready the moment the bubble appears
+    requestSubtitle(this.character.name, roomOf(this.x, this.y).name, text);
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
     const spoken = speak(text, {
