@@ -11,6 +11,7 @@ import {
 import {
   frozenRooms,
   Humanoid,
+  separateBodies,
   updateActions,
   updateEmoteHolds,
 } from "./humanoid";
@@ -183,11 +184,16 @@ function draw(now: number) {
   // painter's order: lower on screen draws in front
   const sortedHumanoids = [...humanoids].sort((a, b) => a.y - b.y);
   for (const humanoid of sortedHumanoids) humanoid.drawUnderlay(ctx, now);
-  for (const humanoid of sortedHumanoids) humanoid.draw(ctx);
+  for (const humanoid of sortedHumanoids)
+    if (!humanoid.dead) humanoid.draw(ctx);
 
   for (const room of ROOMS) {
     for (const interactable of room.interactables) interactable.draw(ctx);
   }
+
+  // a body is the loudest thing in the room: it draws over the living and over
+  // the furniture, so it can never be lost behind whoever is standing there
+  for (const humanoid of sortedHumanoids) if (humanoid.dead) humanoid.draw(ctx);
 
   for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx);
 
@@ -229,6 +235,10 @@ function frame(wallNow: number) {
           humanoid.update(dt, now, humanoids);
         }
       }
+      // after everyone has moved, ease apart anyone who still ended up
+      // sharing a spot — including people whose room is frozen, since that is
+      // a correction of where they already are, not travel
+      separateBodies(humanoids);
       scheduleThinking(humanoids, now);
       for (const humanoid of humanoids)
         maybeUpdateMemory(humanoid, now, humanoids);

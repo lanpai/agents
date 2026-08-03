@@ -190,6 +190,8 @@ function restore(entry: unknown): Humanoid | null {
   if (typeof saved.stamina === "number")
     humanoid.stamina = clamp(saved.stamina);
   humanoid.dead = saved.dead === true;
+  // a body restored from a save died some time ago: its pool is already full
+  if (humanoid.dead) humanoid.deadFor = 3600;
   humanoid.running = saved.running === true;
   if (Array.isArray(saved.statuses)) {
     for (const entry of saved.statuses) {

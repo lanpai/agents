@@ -5,6 +5,7 @@ import {
   findPath,
   roomByName,
   roomOf,
+  ROOMS,
   wrapText,
 } from "./locations";
 import type { Item } from "./interactables/types";
@@ -18,7 +19,7 @@ import {
 import { queueBeat, speak } from "./tts";
 import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
-import { PALETTE, silhouette } from "./theme";
+import { PALETTE, silhouette, mulberry32, hashSeed } from "./theme";
 import type { Character, SpriteSheet } from "./characters/types";
 import type { Status } from "./statuses/types";
 
@@ -59,6 +60,17 @@ const HOP_MAX_TILT = 0.3;
 const ARRIVE_DISTANCE = 2;
 const FOLLOW_DISTANCE = 20;
 const PERSONAL_SPACE = 14; // a destination this close to someone standing there is taken
+// how close two bodies may get before they're pushed apart. Kept under
+// TOUCH_RANGE so a fighter can still reach the person they're shoving past.
+const BODY_RADIUS = 7;
+const SEPARATION = BODY_RADIUS * 2;
+// how much of an overlap is corrected per frame — under 1 so the correction
+// eases out instead of snapping, which reads as a shove rather than a teleport
+const SEPARATION_RESPONSE = 0.35;
+// a walker starts leaning around anyone inside this radius, so bodies part
+// before they touch instead of grinding through each other
+const AVOID_RADIUS = 26;
+const AVOID_STRENGTH = 1.1;
 const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
@@ -69,6 +81,9 @@ const EMOTE_MS_PER_CHAR = 50;
 // takes over — waypoint handoffs (e.g. doorways) idle for a single frame,
 // and snapping to front for that frame reads as a flicker
 const IDLE_GRACE_S = 0.2;
+// the pool under a corpse seeps out over a few seconds and then holds
+const BLOOD_GROW_S = 4;
+const BLOOD_RADIUS = 16;
 
 // one Image per sprite path, shared across every humanoid using it
 const spriteCache = new Map<string, HTMLImageElement>();
@@ -229,10 +244,72 @@ function actionDuration(humanoid: Humanoid): number {
 // dead keep their last frame — that collapsed body *is* the corpse.
 export function updateActions(world: Humanoid[], dt: number) {
   for (const humanoid of world) {
+    // the blood seeps on wall time too: the room a death happens in is frozen
+    // for the reaction, and a sim clock would leave the floor clean through it
+    if (humanoid.dead) humanoid.deadFor += dt;
     if (!humanoid.action) continue;
     humanoid.action.t += dt * 1000;
     if (humanoid.action.t >= actionDuration(humanoid) && !humanoid.dead) {
       humanoid.action = null;
+    }
+  }
+}
+
+// true when a point is inside some room's floor, rather than in a wall or
+// outside the building. roomOf can't answer this — it falls back to the
+// nearest room for points that are in neither.
+function onFloor(x: number, y: number): boolean {
+  return ROOMS.some(
+    (room) =>
+      x >= room.x &&
+      x <= room.x + room.w &&
+      y >= room.y &&
+      y <= room.y + room.h,
+  );
+}
+
+// steering stops bodies from walking into each other; this is the backstop for
+// when they end up sharing a spot anyway — someone spawning on a neighbour, a
+// corridor too narrow to lean out of, a walker pinned against a corpse. Each
+// overlapping pair is eased apart along the line between them.
+export function separateBodies(world: Humanoid[]) {
+  for (let i = 0; i < world.length; i++) {
+    for (let j = i + 1; j < world.length; j++) {
+      const a = world[i]!;
+      const b = world[j]!;
+      // two corpses lie where they fell; nothing left to push them
+      if (a.dead && b.dead) continue;
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      let distance = Math.hypot(dx, dy);
+      if (distance >= SEPARATION) continue;
+      if (distance < 0.001) {
+        // exactly stacked, so there's no line to push along: pick one off the
+        // pair's position in the world list, which is stable frame to frame
+        const angle = ((i * 7 + j) % 16) * (Math.PI / 8);
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+        distance = 0.001;
+      }
+      const nudge = ((SEPARATION - distance) / distance) * SEPARATION_RESPONSE;
+      // the dead are immovable, so a body pushes the living clear of it while
+      // staying put itself; between two living, each gives half the ground
+      const aShare = a.dead ? 0 : b.dead ? 1 : 0.5;
+      const bShare = b.dead ? 0 : a.dead ? 1 : 0.5;
+      // a push that would put someone in a wall is dropped rather than
+      // clamped — better to briefly overlap than to stand inside the masonry
+      const ax = a.x - dx * nudge * aShare;
+      const ay = a.y - dy * nudge * aShare;
+      if (aShare > 0 && onFloor(ax, ay)) {
+        a.x = ax;
+        a.y = ay;
+      }
+      const bx = b.x + dx * nudge * bShare;
+      const by = b.y + dy * nudge * bShare;
+      if (bShare > 0 && onFloor(bx, by)) {
+        b.x = bx;
+        b.y = by;
+      }
     }
   }
 }
@@ -341,6 +418,7 @@ export class Humanoid {
   };
   stamina = 100;
   dead = false;
+  deadFor = 0; // seconds since dying — drives how far the blood has spread
   running = false;
   carrying: Item[] = [];
 
@@ -426,6 +504,52 @@ export class Humanoid {
   // both legs at 100% -> 1, one dead leg -> 0.5, both dead -> 0
   legSpeedFactor(): number {
     return (this.body["left leg"] + this.body["right leg"]) / 200;
+  }
+
+  // bend the current heading away from anyone standing in the way, keeping the
+  // speed intact so a detour costs time rather than pace. Whoever is closest
+  // decides the side to pass on, so two people meeting head-on don't mirror
+  // each other into a deadlock.
+  private steerAroundOthers(
+    world: Humanoid[],
+    speed: number,
+    toDestination: number,
+  ) {
+    // on the last stride the destination wins: veering here would have them
+    // circling the spot they came to stand on
+    if (toDestination <= AVOID_RADIUS * 0.5) return;
+    const headingX = this.vx / speed;
+    const headingY = this.vy / speed;
+    let steerX = 0;
+    let steerY = 0;
+    for (const other of world) {
+      if (other === this) continue;
+      // the one they're closing on isn't an obstacle — it's the point. Veering
+      // off them would have the follower orbit their heels, and the attacker
+      // circle the person they mean to hit.
+      if (other.character.name === this.pendingStrike?.target) continue;
+      if (other.character.name === this.followName) continue;
+      const dx = other.x - this.x;
+      const dy = other.y - this.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance >= AVOID_RADIUS || distance < 0.001) continue;
+      // only what's ahead is in the way; anyone behind or abreast is passed
+      const ahead = (dx * headingX + dy * headingY) / distance;
+      if (ahead <= 0.2) continue;
+      // sidestep perpendicular to the heading, away from the side they're on
+      const cross = headingX * dy - headingY * dx;
+      const side = cross >= 0 ? -1 : 1;
+      const urgency = (1 - distance / AVOID_RADIUS) * ahead;
+      steerX += -headingY * side * urgency;
+      steerY += headingX * side * urgency;
+    }
+    if (steerX === 0 && steerY === 0) return;
+    const blendX = headingX + steerX * AVOID_STRENGTH;
+    const blendY = headingY + steerY * AVOID_STRENGTH;
+    const length = Math.hypot(blendX, blendY);
+    if (length < 0.001) return;
+    this.vx = (blendX / length) * speed;
+    this.vy = (blendY / length) * speed;
   }
 
   say(
@@ -779,6 +903,7 @@ export class Humanoid {
         if (distance > destination.stopDistance) {
           this.vx = (dx / distance) * speed;
           this.vy = (dy / distance) * speed;
+          this.steerAroundOthers(world, speed, distance);
         } else if (this.target) {
           const next = this.pendingPath.shift();
           if (next) {
@@ -950,6 +1075,9 @@ export class Humanoid {
     ctx.save();
     ctx.translate(this.x, this.y);
 
+    // the pool goes down first, so the body's own shadow sits on top of it
+    if (this.dead) this.drawBlood(ctx);
+
     // contact shadow: it stays on the floor while a hop lifts the sprite, and
     // shrinks with the height of the arc
     const arc = this.dead ? 0 : Math.sin(Math.PI * this.hopT);
@@ -968,6 +1096,80 @@ export class Humanoid {
       const dots = ".".repeat(1 + (Math.floor(now / 400) % 3));
       ctx.fillText(dots, 0, 19);
     }
+
+    ctx.restore();
+  }
+
+  // the blood on the floor under a corpse, drawn around the local origin (the
+  // feet). Its shape is seeded off the name, so a given body always bleeds the
+  // same way across frames and reloads; only how far it has spread changes.
+  private drawBlood(ctx: CanvasRenderingContext2D) {
+    const spread = Math.min(1, this.deadFor / BLOOD_GROW_S);
+    if (spread <= 0) return;
+    const eased = 1 - Math.pow(1 - spread, 3); // fast at first, then creeping
+    const random = mulberry32(hashSeed(this.character.name));
+
+    ctx.save();
+    ctx.translate(0, 10); // the ground line, level with the contact shadow
+    ctx.scale(1, 0.5); // seen from above at this pitch, a pool reads squashed
+
+    // one path of overlapping discs, filled once so they merge into a single
+    // ragged body rather than reading as separate blobs
+    ctx.beginPath();
+    for (let i = 0; i < 7; i++) {
+      const angle = random() * Math.PI * 2;
+      const distance = random() * BLOOD_RADIUS * 0.5 * eased;
+      const radius = BLOOD_RADIUS * (0.35 + random() * 0.5) * eased;
+      ctx.moveTo(
+        Math.cos(angle) * distance + radius,
+        Math.sin(angle) * distance,
+      );
+      ctx.arc(
+        Math.cos(angle) * distance,
+        Math.sin(angle) * distance,
+        radius,
+        0,
+        Math.PI * 2,
+      );
+    }
+    ctx.fillStyle = PALETTE.blood;
+    ctx.fill();
+
+    // a wet highlight off-centre, so the pool doesn't read as flat paint
+    ctx.beginPath();
+    ctx.ellipse(
+      -BLOOD_RADIUS * 0.2,
+      -BLOOD_RADIUS * 0.15,
+      BLOOD_RADIUS * 0.3 * eased,
+      BLOOD_RADIUS * 0.2 * eased,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fillStyle = PALETTE.bloodSheen;
+    ctx.fill();
+
+    // spatter thrown clear of the pool on impact: there from the first frame,
+    // so the floor reacts the moment they drop
+    ctx.beginPath();
+    for (let i = 0; i < 9; i++) {
+      const angle = random() * Math.PI * 2;
+      const distance = BLOOD_RADIUS * (0.7 + random() * 1.1);
+      const radius = 0.6 + random() * 1.4;
+      ctx.moveTo(
+        Math.cos(angle) * distance + radius,
+        Math.sin(angle) * distance,
+      );
+      ctx.arc(
+        Math.cos(angle) * distance,
+        Math.sin(angle) * distance,
+        radius,
+        0,
+        Math.PI * 2,
+      );
+    }
+    ctx.fillStyle = PALETTE.bloodSpatter;
+    ctx.fill();
 
     ctx.restore();
   }
