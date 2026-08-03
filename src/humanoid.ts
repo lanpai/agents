@@ -784,15 +784,15 @@ export class Humanoid {
           duration: (stab.frames * stab.frameMs + 800) / 1000,
         },
       ];
-      if (target.dead) {
-        shots.push({
-          x: target.x,
-          y: target.y - 10,
-          zoomFrom: 5.5,
-          zoomTo: 6.2,
-          duration: 2.4,
-        });
-      }
+      // if (target.dead) {
+      //   shots.push({
+      //     x: target.x,
+      //     y: target.y - 10,
+      //     zoomFrom: 5.5,
+      //     zoomTo: 6.2,
+      //     duration: 2.4,
+      //   });
+      // }
       playCutscene(shots, { openFade: false });
     }
   }
