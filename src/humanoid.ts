@@ -80,7 +80,10 @@ function spriteFor(src: string): HTMLImageElement {
 // halo of its own shape behind it — reads as ceiling light catching the figure
 const rimCache = new Map<string, HTMLCanvasElement>();
 
-function rimFor(src: string, image: HTMLImageElement): HTMLCanvasElement | null {
+function rimFor(
+  src: string,
+  image: HTMLImageElement,
+): HTMLCanvasElement | null {
   const cached = rimCache.get(src);
   if (cached) return cached;
   if (!image.complete || image.naturalWidth === 0) return null; // retry next frame
@@ -817,12 +820,15 @@ export class Humanoid {
       stackBottom = this.drawBubble(ctx, this.speech.text, stackBottom, {
         font: "8px monospace",
         lineHeight: 10,
+        caret: true,
       });
     }
     if (this.emote) {
+      // the caret marks the bottom-most bubble — the one pointing at the head
       this.drawBubble(ctx, `*${this.emote.text}*`, stackBottom, {
         font: "8px monospace",
         lineHeight: 10,
+        caret: !this.speech,
       });
     }
 
@@ -835,8 +841,9 @@ export class Humanoid {
     ctx: CanvasRenderingContext2D,
     text: string,
     bottom: number,
-    style: { font: string; lineHeight: number },
+    style: { font: string; lineHeight: number; caret?: boolean },
   ): number {
+    bottom -= 6;
     ctx.textAlign = "center";
     ctx.font = style.font;
     const maxWidth = Math.max(60, (window.innerWidth - 80) / camera.zoom);
@@ -844,11 +851,33 @@ export class Humanoid {
     const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
     const boxHeight = lines.length * style.lineHeight + 3;
     const bubbleTop = bottom - boxHeight;
+    const left = -width / 2 - 5;
+    const right = width / 2 + 5;
+    const radius = 3;
+    const caretHalf = 3;
+    const caretDepth = 4;
+    // one path for box and caret so the border doesn't cross between them
+    ctx.beginPath();
+    ctx.moveTo(left + radius, bubbleTop);
+    ctx.lineTo(right - radius, bubbleTop);
+    ctx.quadraticCurveTo(right, bubbleTop, right, bubbleTop + radius);
+    ctx.lineTo(right, bottom - radius);
+    ctx.quadraticCurveTo(right, bottom, right - radius, bottom);
+    if (style.caret) {
+      ctx.lineTo(caretHalf, bottom);
+      ctx.lineTo(0, bottom + caretDepth);
+      ctx.lineTo(-caretHalf, bottom);
+    }
+    ctx.lineTo(left + radius, bottom);
+    ctx.quadraticCurveTo(left, bottom, left, bottom - radius);
+    ctx.lineTo(left, bubbleTop + radius);
+    ctx.quadraticCurveTo(left, bubbleTop, left + radius, bubbleTop);
+    ctx.closePath();
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 1;
-    ctx.fillRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
-    ctx.strokeRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
+    ctx.fill();
+    ctx.stroke();
     ctx.fillStyle = "#000";
     lines.forEach((line, i) => {
       ctx.fillText(
