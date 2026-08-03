@@ -15,7 +15,8 @@ import {
   focusCameraOnSpeaker,
   isCameraAutoFollowing,
 } from "./camera";
-import { speak } from "./tts";
+import { queueBeat, speak } from "./tts";
+import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
 import { PALETTE, silhouette } from "./theme";
 import type { Character, SpriteSheet } from "./characters/types";
@@ -61,6 +62,13 @@ const PERSONAL_SPACE = 14; // a destination this close to someone standing there
 const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
+// how long an *action* bubble holds its slot on screen, like a spoken line
+const EMOTE_MS_BASE = 1800;
+const EMOTE_MS_PER_CHAR = 50;
+// how long a walker must actually stand still before the idle (front) row
+// takes over — waypoint handoffs (e.g. doorways) idle for a single frame,
+// and snapping to front for that frame reads as a flicker
+const IDLE_GRACE_S = 0.2;
 
 // one Image per sprite path, shared across every humanoid using it
 const spriteCache = new Map<string, HTMLImageElement>();
@@ -80,7 +88,12 @@ function spriteFor(src: string): HTMLImageElement {
 // doubles as the idle animation: it is what plays whenever nobody is walking.
 const FACINGS = ["front", "back", "left", "right"] as const;
 export type Facing = (typeof FACINGS)[number];
-const FACING_ROW: Record<Facing, number> = { front: 0, back: 1, left: 2, right: 3 };
+const FACING_ROW: Record<Facing, number> = {
+  front: 0,
+  back: 1,
+  left: 2,
+  right: 3,
+};
 
 // which way a velocity points; the dominant axis wins, and down is front
 function facingOf(vx: number, vy: number): Facing {
@@ -137,16 +150,28 @@ function drawRimmedSprite(
     for (const [dx, dy] of RIM_OFFSETS) {
       ctx.drawImage(
         rim,
-        sx, sy, sheet.cell, sheet.cell,
-        x + dx, y + dy, sheet.size, sheet.size,
+        sx,
+        sy,
+        sheet.cell,
+        sheet.cell,
+        x + dx,
+        y + dy,
+        sheet.size,
+        sheet.size,
       );
     }
     ctx.restore();
   }
   ctx.drawImage(
     image,
-    sx, sy, sheet.cell, sheet.cell,
-    x, y, sheet.size, sheet.size,
+    sx,
+    sy,
+    sheet.cell,
+    sheet.cell,
+    x,
+    y,
+    sheet.size,
+    sheet.size,
   );
 }
 
@@ -298,6 +323,7 @@ export class Humanoid {
   hopTilt = 0;
   facing: Facing = "front"; // which row of the walk sheet is playing
   animT = 0; // ms into the walk cycle; runs on sim time, so it stops when a room freezes
+  stillFor = IDLE_GRACE_S; // seconds since the last movement, for the idle fallback
   // a one-shot playing over the walk loop: swinging a blade, or going down
   // under one. It runs on wall time (see updateActions) because the room it
   // happens in is frozen for exactly as long as it lasts.
@@ -359,13 +385,40 @@ export class Humanoid {
   }
 
   isMoving(): boolean {
-    return this.vx !== 0 || this.vy !== 0;
+    return this.vx !== 0 || this.vy !== 0 || this.pendingPath.length > 0;
   }
 
   // a small *action* bubble over the head for non-speech, non-movement acts;
   // like talking it freezes the room, and both the freeze and the bubble last
   // until the camera has seen the act
   showEmote(text: string) {
+    // the bubble displays *text*, and the subtitle keys on the display form;
+    // requesting at queue time gives the translation a head start
+    requestSubtitle(
+      this.character.name,
+      roomOf(this.x, this.y).name,
+      `*${text}*`,
+    );
+    // actions share the spoken-line queue: they hold the screen one at a
+    // time, so an action in one room can't talk over dialogue in another
+    const beat = queueBeat(EMOTE_MS_BASE + text.length * EMOTE_MS_PER_CHAR, {
+      onStart: () => {
+        if (this.dead) return;
+        this.emote = { text };
+        // an action is a shot of its own: cut to it like a spoken line
+        focusCameraOnSpeaker(this);
+      },
+      onEnd: () => {
+        this.speaking = false;
+        if (this.emote?.text === text) this.emote = null;
+      },
+    });
+    if (beat) {
+      // freezes the room from decision to bubble-end, exactly like speech
+      this.speaking = true;
+      return;
+    }
+    // queue full: the old instant bubble, held until the camera has seen it
     this.emote = { text };
     this.emoteHold = { seenFor: 0, heldFor: 0 };
   }
@@ -420,6 +473,9 @@ export class Humanoid {
     verb: "say" | "yell",
     delivery?: string,
   ) {
+    // translation starts while the line waits in the TTS queue, so the
+    // subtitle is usually ready the moment the bubble appears
+    requestSubtitle(this.character.name, roomOf(this.x, this.y).name, text);
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
     const spoken = speak(text, {
@@ -752,7 +808,12 @@ export class Humanoid {
     // — standing still just means the front row keeps playing
     const sheet = this.character.sprite.walk;
     this.animT = (this.animT + dt * 1000) % (sheet.frames * sheet.frameMs);
-    if (moving) this.facing = facingOf(this.vx, this.vy);
+    if (moving) {
+      this.facing = facingOf(this.vx, this.vy);
+      this.stillFor = 0;
+    } else {
+      this.stillFor += dt;
+    }
 
     // advance the hop cycle while moving; if stopped mid-hop, finish the arc to land
     if (moving || this.hopT > 0) {
@@ -853,10 +914,13 @@ export class Humanoid {
       return { sheet, facing: this.action.facing, frame };
     }
     const sheet = this.character.sprite.walk;
+    // standing still means the front row, held on its first pose — but only
+    // after a real stop: waypoint handoffs idle for one frame mid-walk
+    const walking = this.isMoving() || this.stillFor < IDLE_GRACE_S;
     return {
       sheet,
-      facing: this.isMoving() ? this.facing : "front",
-      frame: Math.floor(this.animT / sheet.frameMs) % sheet.frames,
+      facing: walking ? this.facing : "front",
+      frame: walking ? Math.floor(this.animT / sheet.frameMs) % sheet.frames : 0,
     };
   }
 

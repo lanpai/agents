@@ -24,6 +24,7 @@ import {
 } from "./persistence";
 import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
+import { drawSubtitles } from "./subtitles";
 import { advanceSimTime, simNow } from "./time";
 import { PALETTE } from "./theme";
 import { cory } from "./characters/cory";
@@ -91,7 +92,7 @@ initSidebar({
   },
   clearData,
 });
-initBetting(humanoids);
+// initBetting(humanoids);
 
 // tv-style opening credits: an establishing wide of the office, a slow
 // push-in on each cast member with their name, then a closing wide. Every
@@ -195,6 +196,7 @@ function draw(now: number) {
   drawVignette(ctx);
   drawSelectionBox(ctx);
   if (isSidebarOpen()) drawLog(ctx, selected);
+  drawSubtitles(ctx, humanoids);
   drawCutscene(ctx);
 }
 

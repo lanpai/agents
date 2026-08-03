@@ -19,6 +19,8 @@ const TEXT_FADE_OUT = 0.4;
 const BARS_SLIDE = 0.9; // seconds for the letterbox bars to slide in/out
 const OPEN_FADE = 1.2; // fade up from black at the very start
 const BAR_HEIGHT = 0.11; // of screen height, each bar
+const VIGNETTE_FADE = 1; // seconds the vignette takes to ease off at the end
+const VIGNETTE_STRENGTH = 0.8;
 
 let shots: Shot[] = [];
 let index = 0;
@@ -39,12 +41,19 @@ export function playCutscene(sequence: Shot[]) {
   elapsed = 0;
   total = sequence.reduce((sum, shot) => sum + shot.duration, 0);
   playing = true;
-  // capture phase, so a skip-click doesn't also select a humanoid
+  window.addEventListener("keydown", skipOnEscape, true);
   applyCamera(); // cut to the first shot before the next frame draws
 }
 
 function endCutscene() {
   playing = false;
+  window.removeEventListener("keydown", skipOnEscape, true);
+}
+
+function skipOnEscape(event: KeyboardEvent) {
+  if (event.key !== "Escape") return;
+  event.stopPropagation();
+  endCutscene();
 }
 
 // ticks on wall time and drives the camera directly; main.ts skips
@@ -81,7 +90,11 @@ export function drawCutscene(ctx: CanvasRenderingContext2D) {
   const h = window.innerHeight;
   const shot = shots[index]!;
 
-  // much heavier than the ambient vignette: pulls the eye to the framed actor
+  // much heavier than the ambient vignette: pulls the eye to the framed
+  // actor; eases off over the last second so the ending doesn't pop
+  const vignette =
+    VIGNETTE_STRENGTH *
+    Math.max(0, Math.min(1, (total - elapsed) / VIGNETTE_FADE));
   const gradient = ctx.createRadialGradient(
     w / 2,
     h / 2,
@@ -91,7 +104,7 @@ export function drawCutscene(ctx: CanvasRenderingContext2D) {
     Math.hypot(w, h) / 2,
   );
   gradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-  gradient.addColorStop(1, "rgba(0, 0, 0, 0.8)");
+  gradient.addColorStop(1, `rgba(0, 0, 0, ${vignette})`);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, w, h);
 
@@ -118,7 +131,7 @@ export function drawCutscene(ctx: CanvasRenderingContext2D) {
     ctx.shadowBlur = 12;
     ctx.letterSpacing = "6px"; // ignored by engines that don't support it
     if (shot.label) {
-      ctx.font = "600 13px sans-serif";
+      ctx.font = "600 18px sans-serif";
       ctx.fillStyle = "#c7cfdd";
       ctx.fillText(shot.label.toUpperCase(), w / 2, h - bar - 64);
     }
