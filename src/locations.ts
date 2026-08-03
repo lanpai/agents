@@ -291,7 +291,7 @@ export function drawHouse(ctx: CanvasRenderingContext2D) {
 
   // room names in the top-left corner of each room, just inside the wall —
   // small tracked-out caps, outlined so they read over any floor material
-  ctx.font = "7px monospace";
+  ctx.font = "7px sans-serif";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.letterSpacing = "1px"; // ignored by engines that don't support it

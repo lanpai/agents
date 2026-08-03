@@ -41,7 +41,7 @@ export function drawLog(ctx: CanvasRenderingContext2D, filter: Set<Humanoid>) {
   ).slice(-VISIBLE_LINES);
   if (visible.length === 0) return;
   ctx.save();
-  ctx.font = "14px monospace";
+  ctx.font = "14px sans-serif";
   ctx.textAlign = "left";
   let y = window.innerHeight - 10;
   for (let i = visible.length - 1; i >= 0; i--) {

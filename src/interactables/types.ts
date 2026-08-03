@@ -19,7 +19,7 @@ export abstract class Interactable {
     if (this.position) {
       ctx.save();
 
-      ctx.font = "6px monospace";
+      ctx.font = "6px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       // outlined, because the floor underneath it can be any material

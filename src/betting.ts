@@ -18,7 +18,7 @@ export function initBetting(humanoids: Humanoid[]) {
     width: "420px",
     maxWidth: "calc(100vw - 40px)",
     boxSizing: "border-box",
-    font: "14px monospace",
+    font: "14px sans-serif",
     padding: "6px 8px",
     background: "#232a36",
     color: "#d6dbe4",

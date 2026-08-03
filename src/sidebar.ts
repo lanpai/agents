@@ -30,12 +30,12 @@ export function initSidebar(options: {
     color: "#d6dbe4",
     borderLeft: "1px solid #2b3140",
     padding: "12px",
-    font: "12px monospace",
+    font: "12px sans-serif",
     zIndex: "10",
   });
 
   const buttonStyle = {
-    font: "14px monospace",
+    font: "14px sans-serif",
     padding: "4px 12px",
     background: "#232a36",
     color: "#d6dbe4",

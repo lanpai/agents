@@ -793,7 +793,7 @@ export class Humanoid {
     ctx.restore();
 
     ctx.textAlign = "center";
-    ctx.font = "9px monospace";
+    ctx.font = "9px sans-serif";
     ctx.fillStyle = PALETTE.nameText;
     // ctx.fillText(
     //   this.dead ? `${this.character.name} (dead)` : this.character.name,
@@ -818,7 +818,7 @@ export class Humanoid {
     let stackBottom = -14;
     if (this.speech) {
       stackBottom = this.drawBubble(ctx, this.speech.text, stackBottom, {
-        font: "8px monospace",
+        font: "8px sans-serif",
         lineHeight: 10,
         caret: true,
       });
@@ -826,7 +826,7 @@ export class Humanoid {
     if (this.emote) {
       // the caret marks the bottom-most bubble — the one pointing at the head
       this.drawBubble(ctx, `*${this.emote.text}*`, stackBottom, {
-        font: "8px monospace",
+        font: "8px sans-serif",
         lineHeight: 10,
         caret: !this.speech,
       });
