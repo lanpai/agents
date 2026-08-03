@@ -1,8 +1,12 @@
-import type { Character } from "./types";
+import { sheet, type Character } from "./types";
 
 export const yanghua: Character = {
   name: "Yanghua",
-  sprite: { src: "/yanghua_walk.png", cell: 96, frames: 4, frameMs: 250 },
+  sprite: {
+    walk: sheet("/yanghua_walk.png", 250, 36),
+    stab: sheet("/yanghua_stab.png", 250, 39),
+    stabbed: sheet("/yanghua_stabbed.png", 250, 35.9),
+  },
   description: "",
   voice: {
     baseF0: 130,

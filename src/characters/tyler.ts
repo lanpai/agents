@@ -1,8 +1,12 @@
-import type { Character } from "./types";
+import { sheet, type Character } from "./types";
 
 export const tyler: Character = {
   name: "Tyler",
-  sprite: { src: "/tyler_walk.png", cell: 96, frames: 4, frameMs: 250 },
+  sprite: {
+    walk: sheet("/tyler_walk.png", 250, 36),
+    stab: sheet("/tyler_stab.png", 250, 36.7),
+    stabbed: sheet("/tyler_stabbed.png", 250, 36.6),
+  },
   description: "",
   voice: {
     baseF0: 130,

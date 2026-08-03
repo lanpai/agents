@@ -1,10 +1,14 @@
 import { addStatusToHumanoid } from "../statuses";
 import { MurderousIntent } from "../statuses/murderousIntent";
-import type { Character } from "./types";
+import { sheet, type Character } from "./types";
 
 export const leland: Character = {
   name: "Leland",
-  sprite: { src: "/leland_walk.png", cell: 96, frames: 4, frameMs: 292 },
+  sprite: {
+    walk: sheet("/leland_walk.png", 292, 36),
+    stab: sheet("/leland_stab.png", 250, 43),
+    stabbed: sheet("/leland_stabbed.png", 250, 38.9),
+  },
   description:
     "You are Leland, you are in charge of hiring and socials at Spellbrush. You love to joke around and poke fun. You are unhurried and enjoy trying new things that catch your interest.",
   voice: {

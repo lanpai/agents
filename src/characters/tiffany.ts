@@ -1,10 +1,14 @@
 import { addStatusToHumanoid } from "../statuses";
 import { MaimaiPlayer } from "../statuses/maimaiPlayer";
-import type { Character } from "./types";
+import { sheet, type Character } from "./types";
 
 export const tiffany: Character = {
   name: "Tiffany",
-  sprite: { src: "/tiffany_walk.png", cell: 96, frames: 4, frameMs: 250 },
+  sprite: {
+    walk: sheet("/tiffany_walk.png", 250, 36),
+    stab: sheet("/tiffany_stab.png", 250, 39.1),
+    stabbed: sheet("/tiffany_stabbed.png", 250, 41.8),
+  },
   description: "",
   voice: {
     baseF0: 130,
