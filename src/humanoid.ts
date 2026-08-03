@@ -81,7 +81,12 @@ function spriteFor(src: string): HTMLImageElement {
 // doubles as the idle animation: it is what plays whenever nobody is walking.
 const FACINGS = ["front", "back", "left", "right"] as const;
 export type Facing = (typeof FACINGS)[number];
-const FACING_ROW: Record<Facing, number> = { front: 0, back: 1, left: 2, right: 3 };
+const FACING_ROW: Record<Facing, number> = {
+  front: 0,
+  back: 1,
+  left: 2,
+  right: 3,
+};
 
 // which way a velocity points; the dominant axis wins, and down is front
 function facingOf(vx: number, vy: number): Facing {
@@ -130,16 +135,28 @@ function drawRimmedSprite(
     for (const [dx, dy] of RIM_OFFSETS) {
       ctx.drawImage(
         rim,
-        sx, sy, sheet.cell, sheet.cell,
-        -half + dx, -half - 4 + dy, SPRITE_SIZE, SPRITE_SIZE,
+        sx,
+        sy,
+        sheet.cell,
+        sheet.cell,
+        -half + dx,
+        -half - 4 + dy,
+        SPRITE_SIZE,
+        SPRITE_SIZE,
       );
     }
     ctx.restore();
   }
   ctx.drawImage(
     image,
-    sx, sy, sheet.cell, sheet.cell,
-    -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE,
+    sx,
+    sy,
+    sheet.cell,
+    sheet.cell,
+    -half,
+    -half - 4,
+    SPRITE_SIZE,
+    SPRITE_SIZE,
   );
 }
 
@@ -810,14 +827,12 @@ export class Humanoid {
     const half = SPRITE_SIZE / 2;
     // standing still means the front row, which is the idle animation
     const facing = this.isMoving() ? this.facing : "front";
-    const frame = Math.floor(this.animT / sheet.frameMs) % sheet.frames;
-    // snap to whole screen pixels, not whole world units: at high zoom one world
-    // unit is several pixels, so rounding in world space makes walking judder
-    const snap = (value: number) =>
-      Math.round(value * camera.zoom) / camera.zoom;
+    const frame = this.isMoving()
+      ? Math.floor(this.animT / sheet.frameMs) % sheet.frames
+      : 0;
     if (this.dead) {
       ctx.save();
-      ctx.translate(snap(this.x), snap(this.y));
+      ctx.translate(this.x, this.y);
       ctx.rotate(Math.PI / 2);
       drawRimmedSprite(ctx, sheet, sprite, half, "front", 0);
       ctx.restore();
@@ -825,7 +840,7 @@ export class Humanoid {
     }
     const arc = Math.sin(Math.PI * this.hopT);
     ctx.save();
-    ctx.translate(snap(this.x), snap(this.y - arc * HOP_HEIGHT));
+    ctx.translate(this.x, this.y - arc * HOP_HEIGHT);
     ctx.rotate(arc * this.hopTilt);
     drawRimmedSprite(ctx, sheet, sprite, half, facing, frame);
     ctx.restore();
