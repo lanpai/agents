@@ -132,7 +132,7 @@ export function drawCutscene(ctx: CanvasRenderingContext2D) {
     ctx.letterSpacing = "6px"; // ignored by engines that don't support it
     if (shot.label) {
       ctx.font = "600 18px sans-serif";
-      ctx.fillStyle = "#c7cfdd";
+      ctx.fillStyle = "#fff";
       ctx.fillText(shot.label.toUpperCase(), w / 2, h - bar - 64);
     }
     if (shot.title) {
