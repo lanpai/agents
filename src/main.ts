@@ -1,6 +1,13 @@
 import { maybeUpdateMemory, scheduleThinking } from "./agent";
 import { initBetting } from "./betting";
 import { camera, initCameraControls, updateCamera } from "./camera";
+import {
+  drawCutscene,
+  isCutscenePlaying,
+  playCutscene,
+  updateCutscene,
+  type Shot,
+} from "./cutscene";
 import { frozenRooms, Humanoid, updateEmoteHolds } from "./humanoid";
 import { drawHouse, ROOMS, roomOf } from "./locations";
 import { drawLog } from "./log";
@@ -81,6 +88,56 @@ initSidebar({
 });
 initBetting(humanoids);
 
+// tv-style opening credits: an establishing wide of the office, a slow
+// push-in on each cast member with their name, then a closing wide. Every
+// room holds still until it finishes; click or Escape skips it.
+function introShots(): Shot[] {
+  const minX = Math.min(...ROOMS.map((room) => room.x));
+  const minY = Math.min(...ROOMS.map((room) => room.y));
+  const maxX = Math.max(...ROOMS.map((room) => room.x + room.w));
+  const maxY = Math.max(...ROOMS.map((room) => room.y + room.h));
+  const wide = {
+    x: (minX + maxX) / 2,
+    y: (minY + maxY) / 2,
+    zoom:
+      Math.min(
+        window.innerWidth / (maxX - minX),
+        window.innerHeight / (maxY - minY),
+      ) * 0.8,
+  };
+  const cast = humanoids.filter((humanoid) => !humanoid.dead);
+  const shots: Shot[] = [
+    {
+      x: wide.x,
+      y: wide.y,
+      zoomFrom: wide.zoom * 0.9,
+      zoomTo: wide.zoom,
+      duration: 3,
+      title: "Spellbrush's Murder Mystery",
+    },
+  ];
+  cast.forEach((humanoid, i) => {
+    shots.push({
+      x: humanoid.x,
+      y: humanoid.y - 10, // frame the sprite, which draws above its anchor
+      zoomFrom: 4.2,
+      zoomTo: 5.6,
+      duration: 2.4,
+      label: i === 0 ? "starring" : i === cast.length - 1 ? "and" : "",
+      title: humanoid.character.name,
+    });
+  });
+  shots.push({
+    x: wide.x,
+    y: wide.y,
+    zoomFrom: wide.zoom * 1.08,
+    zoomTo: wide.zoom,
+    duration: 2.5,
+  });
+  return shots;
+}
+playCutscene(introShots());
+
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = window.innerWidth * dpr;
@@ -133,34 +190,42 @@ function draw(now: number) {
   drawVignette(ctx);
   drawSelectionBox(ctx);
   if (isSidebarOpen()) drawLog(ctx, selected);
+  drawCutscene(ctx);
 }
 
 let last = performance.now();
 function frame(wallNow: number) {
   const dt = Math.min((wallNow - last) / 1000, 0.05);
   last = wallNow;
-  if (!paused) {
-    advanceSimTime(dt * 1000);
-    const now = simNow();
-    // emote holds tick on wall time even while their own room is frozen
-    updateEmoteHolds(humanoids, dt);
-    // time stands still only in rooms with a thinking, speaking, or
-    // freshly-emoting humanoid; everyone elsewhere carries on as normal
-    const frozen = frozenRooms(humanoids);
-    for (const humanoid of humanoids) {
-      if (frozen.has(roomOf(humanoid.x, humanoid.y))) {
-        // hold their personal schedule in place while their room is frozen
-        humanoid.nextThinkAt += dt * 1000;
-        humanoid.nextMemoryAt += dt * 1000;
-      } else {
-        humanoid.update(dt, now, humanoids);
+  if (isCutscenePlaying()) {
+    // a cutscene freezes every room: sim time holds still, nobody thinks or
+    // moves, and the cutscene drives the camera itself
+    updateCutscene(dt);
+  } else {
+    if (!paused) {
+      advanceSimTime(dt * 1000);
+      const now = simNow();
+      // emote holds tick on wall time even while their own room is frozen
+      updateEmoteHolds(humanoids, dt);
+      // time stands still only in rooms with a thinking, speaking, or
+      // freshly-emoting humanoid; everyone elsewhere carries on as normal
+      const frozen = frozenRooms(humanoids);
+      for (const humanoid of humanoids) {
+        if (frozen.has(roomOf(humanoid.x, humanoid.y))) {
+          // hold their personal schedule in place while their room is frozen
+          humanoid.nextThinkAt += dt * 1000;
+          humanoid.nextMemoryAt += dt * 1000;
+        } else {
+          humanoid.update(dt, now, humanoids);
+        }
       }
+      scheduleThinking(humanoids, now);
+      for (const humanoid of humanoids)
+        maybeUpdateMemory(humanoid, now, humanoids);
     }
-    scheduleThinking(humanoids, now);
-    for (const humanoid of humanoids)
-      maybeUpdateMemory(humanoid, now, humanoids);
+    // wall-time: the camera glides even while rooms are frozen
+    updateCamera(dt);
   }
-  updateCamera(dt); // wall-time: the camera glides even while rooms are frozen
   draw(wallNow);
   requestAnimationFrame(frame);
 }
