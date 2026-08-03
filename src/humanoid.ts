@@ -764,7 +764,6 @@ export class Humanoid {
       ctx.save();
       ctx.translate(Math.round(this.x), Math.round(this.y));
       ctx.rotate(Math.PI / 2);
-      ctx.globalAlpha = 0.5;
       drawRimmedSprite(ctx, this.character.sprite, sprite, half);
       ctx.restore();
       return;
@@ -795,11 +794,6 @@ export class Humanoid {
     ctx.textAlign = "center";
     ctx.font = "9px sans-serif";
     ctx.fillStyle = PALETTE.nameText;
-    // ctx.fillText(
-    //   this.dead ? `${this.character.name} (dead)` : this.character.name,
-    //   0,
-    //   19,
-    // );
     if (this.thinking) {
       const dots = ".".repeat(1 + (Math.floor(now / 400) % 3));
       ctx.fillText(dots, 0, 19);
