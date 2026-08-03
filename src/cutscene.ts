@@ -40,30 +40,11 @@ export function playCutscene(sequence: Shot[]) {
   total = sequence.reduce((sum, shot) => sum + shot.duration, 0);
   playing = true;
   // capture phase, so a skip-click doesn't also select a humanoid
-  window.addEventListener("pointerdown", skipOnPointer, true);
-  window.addEventListener("keydown", skipOnEscape, true);
   applyCamera(); // cut to the first shot before the next frame draws
-}
-
-export function skipCutscene() {
-  if (playing) endCutscene();
 }
 
 function endCutscene() {
   playing = false;
-  window.removeEventListener("pointerdown", skipOnPointer, true);
-  window.removeEventListener("keydown", skipOnEscape, true);
-}
-
-function skipOnPointer(event: PointerEvent) {
-  event.stopPropagation();
-  skipCutscene();
-}
-
-function skipOnEscape(event: KeyboardEvent) {
-  if (event.key !== "Escape") return;
-  event.stopPropagation();
-  skipCutscene();
 }
 
 // ticks on wall time and drives the camera directly; main.ts skips

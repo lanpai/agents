@@ -113,7 +113,7 @@ function introShots(): Shot[] {
       zoomFrom: wide.zoom * 0.9,
       zoomTo: wide.zoom,
       duration: 3,
-      title: "Spellbrush",
+      title: "Spellbrush's Murder Mystery",
     },
   ];
   cast.forEach((humanoid, i) => {
