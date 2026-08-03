@@ -124,17 +124,25 @@ const RIM_OFFSETS = [
   [0, 1],
 ] as const;
 
-// halo + one cell of the walk sheet, drawn around the humanoid's own origin
+// where the feet sit inside a cell, and where that lands relative to the
+// humanoid's own origin — matched to FEET_ROW in scripts/make_sprite_sheet.py.
+// Placing every sheet by its ground line is what lets cells of different sizes
+// share one standing position.
+const FEET_ROW = 0.94;
+const FEET_OFFSET = 12;
+
+// halo + one cell of a sheet, drawn around the humanoid's own origin
 function drawRimmedSprite(
   ctx: CanvasRenderingContext2D,
   sheet: SpriteSheet,
   image: HTMLImageElement,
-  half: number,
   facing: Facing,
   frame: number,
 ) {
   const sx = frame * sheet.cell;
   const sy = FACING_ROW[facing] * sheet.cell;
+  const x = -sheet.size / 2;
+  const y = FEET_OFFSET - FEET_ROW * sheet.size;
   const rim = rimFor(sheet.src, image);
   if (rim) {
     ctx.save();
@@ -146,10 +154,10 @@ function drawRimmedSprite(
         sy,
         sheet.cell,
         sheet.cell,
-        -half + dx,
-        -half - 4 + dy,
-        SPRITE_SIZE,
-        SPRITE_SIZE,
+        x + dx,
+        y + dy,
+        sheet.size,
+        sheet.size,
       );
     }
     ctx.restore();
@@ -160,10 +168,10 @@ function drawRimmedSprite(
     sy,
     sheet.cell,
     sheet.cell,
-    -half,
-    -half - 4,
-    SPRITE_SIZE,
-    SPRITE_SIZE,
+    x,
+    y,
+    sheet.size,
+    sheet.size,
   );
 }
 
@@ -183,13 +191,19 @@ export function broadcastToRoom(
 }
 
 // rooms where time currently stands still: any room holding a humanoid who
-// is mid-decision, whose voice line is queued/playing, or whose emote the
-// camera hasn't witnessed yet
+// is mid-decision, whose voice line is queued/playing, whose emote the camera
+// hasn't witnessed yet, or who is mid-swing — or mid-collapse, which is the one
+// thing the dead can still hold a room for
 export function frozenRooms(world: Humanoid[]) {
   const rooms = new Set<ReturnType<typeof roomOf>>();
   for (const humanoid of world) {
-    if (humanoid.dead) continue;
-    if (humanoid.thinking || humanoid.speaking || humanoid.emoteHold) {
+    if (humanoid.dead && !isPlayingAction(humanoid)) continue;
+    if (
+      humanoid.thinking ||
+      humanoid.speaking ||
+      humanoid.emoteHold ||
+      isPlayingAction(humanoid)
+    ) {
       rooms.add(roomOf(humanoid.x, humanoid.y));
     }
   }
@@ -203,6 +217,30 @@ export function frozenRooms(world: Humanoid[]) {
 const EMOTE_SEEN_SECONDS = 0.5;
 const EMOTE_HOLD_MAX_SECONDS = 5;
 const EMOTE_SEEN_DISTANCE = 40; // camera center this close = the actor is framed
+
+// how long a one-shot runs end to end
+function actionDuration(humanoid: Humanoid): number {
+  const sheet = humanoid.character.sprite[humanoid.action!.kind];
+  return sheet.frames * sheet.frameMs;
+}
+
+// one-shots tick on wall time: their own room is frozen while they play, so a
+// sim-time clock would never advance and the animation would never end. The
+// dead keep their last frame — that collapsed body *is* the corpse.
+export function updateActions(world: Humanoid[], dt: number) {
+  for (const humanoid of world) {
+    if (!humanoid.action) continue;
+    humanoid.action.t += dt * 1000;
+    if (humanoid.action.t >= actionDuration(humanoid) && !humanoid.dead) {
+      humanoid.action = null;
+    }
+  }
+}
+
+// true while a one-shot still has frames to show — the room waits for it
+export function isPlayingAction(humanoid: Humanoid): boolean {
+  return humanoid.action !== null && humanoid.action.t < actionDuration(humanoid);
+}
 
 export function updateEmoteHolds(world: Humanoid[], dt: number) {
   for (const humanoid of world) {
@@ -286,6 +324,10 @@ export class Humanoid {
   facing: Facing = "front"; // which row of the walk sheet is playing
   animT = 0; // ms into the walk cycle; runs on sim time, so it stops when a room freezes
   stillFor = IDLE_GRACE_S; // seconds since the last movement, for the idle fallback
+  // a one-shot playing over the walk loop: swinging a blade, or going down
+  // under one. It runs on wall time (see updateActions) because the room it
+  // happens in is frozen for exactly as long as it lasts.
+  action: { kind: "stab" | "stabbed"; facing: Facing; t: number } | null = null;
 
   statuses = new Map<string, Status>();
 
@@ -584,6 +626,11 @@ export class Humanoid {
       witness.nextThinkAt = Math.min(witness.nextThinkAt, now + 500);
     }
 
+    // both fighters turn to face each other for the exchange. Punches have no
+    // art of their own, so they borrow the blade's swing.
+    this.playAction("stab", facingOf(target.x - this.x, target.y - this.y));
+    target.facing = facingOf(this.x - target.x, this.y - target.y);
+
     target.takeDamage(part, damage, world, now);
     this.remember(`You ${verb.past} ${target.character.name}'s ${part}.`);
     if (!target.dead) {
@@ -605,9 +652,16 @@ export class Humanoid {
     }
   }
 
+  // start a one-shot over the walk loop; it holds the room until it finishes
+  playAction(kind: "stab" | "stabbed", facing: Facing) {
+    this.action = { kind, facing, t: 0 };
+  }
+
   die(world: Humanoid[], now: number) {
     if (this.dead) return;
     this.dead = true;
+    // the collapse plays out and then stays put — its last frame is the corpse
+    this.playAction("stabbed", this.facing);
     logAction(`${this.character.name} dies!`, this);
     this.vx = 0;
     this.vy = 0;
@@ -752,7 +806,7 @@ export class Humanoid {
     const moving = this.isMoving();
     // the walk cycle runs at the source video's tempo whether walking or idling
     // — standing still just means the front row keeps playing
-    const sheet = this.character.sprite;
+    const sheet = this.character.sprite.walk;
     this.animT = (this.animT + dt * 1000) % (sheet.frames * sheet.frameMs);
     if (moving) {
       this.facing = facingOf(this.vx, this.vy);
@@ -848,37 +902,47 @@ export class Humanoid {
     }
   }
 
+  // which sheet, row and column to show right now: a one-shot wins while it
+  // plays, otherwise the walk loop — whose front row doubles as the idle
+  private pose(): { sheet: SpriteSheet; facing: Facing; frame: number } {
+    if (this.action) {
+      const sheet = this.character.sprite[this.action.kind];
+      const frame = Math.min(
+        Math.floor(this.action.t / sheet.frameMs),
+        sheet.frames - 1, // the dead hold the last frame forever
+      );
+      return { sheet, facing: this.action.facing, frame };
+    }
+    const sheet = this.character.sprite.walk;
+    // standing still means the front row, held on its first pose — but only
+    // after a real stop: waypoint handoffs idle for one frame mid-walk
+    const walking = this.isMoving() || this.stillFor < IDLE_GRACE_S;
+    return {
+      sheet,
+      facing: walking ? this.facing : "front",
+      frame: walking ? Math.floor(this.animT / sheet.frameMs) % sheet.frames : 0,
+    };
+  }
+
   draw(ctx: CanvasRenderingContext2D) {
-    const sheet = this.character.sprite;
+    const { sheet, facing, frame } = this.pose();
     const sprite = spriteFor(sheet.src);
     if (!sprite.complete || sprite.naturalWidth === 0) return;
     // nearest-neighbour picks different source pixels every frame while the
     // sprite is being minified, which reads as shimmer on fine detail — so
     // filter when shrinking the cell and stay crisp once it's blown up
-    const onScreen = SPRITE_SIZE * camera.zoom;
-    ctx.imageSmoothingEnabled = onScreen < sheet.cell;
+    ctx.imageSmoothingEnabled = sheet.size * camera.zoom < sheet.cell;
     ctx.imageSmoothingQuality = "high";
-    const half = SPRITE_SIZE / 2;
-    // standing still means the front row, which is the idle animation — but
-    // only after a real stop: waypoint handoffs idle for one frame mid-walk
-    const walking = this.isMoving() || this.stillFor < IDLE_GRACE_S;
-    const facing = walking ? this.facing : "front";
-    const frame = walking
-      ? Math.floor(this.animT / sheet.frameMs) % sheet.frames
-      : 0;
-    if (this.dead) {
-      ctx.save();
-      ctx.translate(this.x, this.y);
-      ctx.rotate(Math.PI / 2);
-      drawRimmedSprite(ctx, sheet, sprite, half, "front", 0);
-      ctx.restore();
-      return;
-    }
-    const arc = Math.sin(Math.PI * this.hopT);
+    // snap to whole screen pixels, not whole world units: at high zoom one world
+    // unit is several pixels, so rounding in world space makes walking judder
+    const snap = (value: number) =>
+      Math.round(value * camera.zoom) / camera.zoom;
+    // the collapse animation lays the body down itself — no rotation needed
+    const arc = this.dead ? 0 : Math.sin(Math.PI * this.hopT);
     ctx.save();
-    ctx.translate(this.x, this.y - arc * HOP_HEIGHT);
-    ctx.rotate(arc * this.hopTilt);
-    drawRimmedSprite(ctx, sheet, sprite, half, facing, frame);
+    ctx.translate(snap(this.x), snap(this.y - arc * HOP_HEIGHT));
+    if (!this.dead) ctx.rotate(arc * this.hopTilt);
+    drawRimmedSprite(ctx, sheet, sprite, facing, frame);
     ctx.restore();
   }
 

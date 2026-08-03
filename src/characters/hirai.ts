@@ -1,8 +1,12 @@
-import type { Character } from "./types";
+import { sheet, type Character } from "./types";
 
 export const hirai: Character = {
   name: "Hirai",
-  sprite: { src: "/hirai_walk.png", cell: 96, frames: 4, frameMs: 229 },
+  sprite: {
+    walk: sheet("/hirai_walk.png", 229, 36),
+    stab: sheet("/hirai_stab.png", 250, 50.7),
+    stabbed: sheet("/hirai_stabbed.png", 250, 35.5),
+  },
   description: "",
   voice: {
     baseF0: 130,

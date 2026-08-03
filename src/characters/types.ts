@@ -13,18 +13,39 @@ export type Voice = {
   vibratoRate?: number; // wobbles per second
 };
 
-// a walk sheet built by scripts/make_sprite_sheet.py: four square cells per row,
-// one row per facing in the order front, back, left, right
+// a sheet built by scripts/make_sprite_sheet.py: four square cells per row, one
+// row per facing in the order front, back, left, right
 export type SpriteSheet = {
   src: string; // image path under public/
   cell: number; // pixel size of one square cell
   frames: number; // poses per row
   frameMs: number; // how long one pose is held
+  // world units the cell is drawn at. A body on the floor needs a wider crop
+  // than a standing one, so its cell covers more ground — drawing it larger by
+  // the same ratio is what keeps the character one size across animations.
+  size: number;
+};
+
+// every sheet the script emits is four poses across, four facings down, in
+// 96px cells — only the tempo and the world size differ
+export const sheet = (
+  src: string,
+  frameMs: number,
+  size: number,
+): SpriteSheet => ({ src, cell: 96, frames: 4, frameMs, size });
+
+// walk loops forever; the other two play once and hand back to walk. Nothing
+// but a knife (or a fist) triggers them, so they stay optional-free: every
+// character ships all three.
+export type CharacterSprites = {
+  walk: SpriteSheet;
+  stab: SpriteSheet;
+  stabbed: SpriteSheet;
 };
 
 export type Character = {
   name: string;
-  sprite: SpriteSheet; // drawn at SPRITE_SIZE world units square
+  sprite: CharacterSprites;
   description: string;
   voice: Voice;
   initialMemory: string;

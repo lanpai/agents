@@ -8,7 +8,12 @@ import {
   updateCutscene,
   type Shot,
 } from "./cutscene";
-import { frozenRooms, Humanoid, updateEmoteHolds } from "./humanoid";
+import {
+  frozenRooms,
+  Humanoid,
+  updateActions,
+  updateEmoteHolds,
+} from "./humanoid";
 import { drawHouse, ROOMS, roomOf } from "./locations";
 import { drawLog } from "./log";
 import {
@@ -210,6 +215,9 @@ function frame(wallNow: number) {
       const now = simNow();
       // emote holds tick on wall time even while their own room is frozen
       updateEmoteHolds(humanoids, dt);
+      // so do one-shot animations — the room they happen in is frozen for
+      // exactly as long as they run, so a sim clock would deadlock them
+      updateActions(humanoids, dt);
       // time stands still only in rooms with a thinking, speaking, or
       // freshly-emoting humanoid; everyone elsewhere carries on as normal
       const frozen = frozenRooms(humanoids);
