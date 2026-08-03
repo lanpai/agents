@@ -4,7 +4,7 @@ import type { Character } from "./types";
 
 export const leland: Character = {
   name: "Leland",
-  sprite: "/leland.png",
+  sprite: { src: "/leland_walk.png", cell: 96, frames: 4, frameMs: 292 },
   description:
     "You are Leland, you are in charge of hiring and socials at Spellbrush. You love to joke around and poke fun. You are unhurried and enjoy trying new things that catch your interest.",
   voice: {

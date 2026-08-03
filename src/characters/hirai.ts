@@ -2,7 +2,7 @@ import type { Character } from "./types";
 
 export const hirai: Character = {
   name: "Hirai",
-  sprite: "/hirai.png",
+  sprite: { src: "/hirai_walk.png", cell: 96, frames: 4, frameMs: 229 },
   description: "",
   voice: {
     baseF0: 130,

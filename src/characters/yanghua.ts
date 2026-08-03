@@ -2,7 +2,7 @@ import type { Character } from "./types";
 
 export const yanghua: Character = {
   name: "Yanghua",
-  sprite: "/yanghua.png",
+  sprite: { src: "/yanghua_walk.png", cell: 96, frames: 4, frameMs: 250 },
   description: "",
   voice: {
     baseF0: 130,

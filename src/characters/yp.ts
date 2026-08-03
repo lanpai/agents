@@ -2,7 +2,7 @@ import type { Character } from "./types";
 
 export const yp: Character = {
   name: "YP",
-  sprite: "/yp.png",
+  sprite: { src: "/yp_walk.png", cell: 96, frames: 4, frameMs: 260 },
   description: "",
   voice: {
     baseF0: 130,
