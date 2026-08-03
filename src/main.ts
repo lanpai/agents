@@ -15,17 +15,39 @@ import { initSidebar, isSidebarOpen } from "./sidebar";
 import { advanceSimTime, simNow } from "./time";
 import { PALETTE } from "./theme";
 import { cory } from "./characters/cory";
+import { eric } from "./characters/eric";
+import { hirai } from "./characters/hirai";
 import { leland } from "./characters/leland";
+import { tiffany } from "./characters/tiffany";
+import { tyler } from "./characters/tyler";
+import { yanghua } from "./characters/yanghua";
+import { yp } from "./characters/yp";
+import type { Character } from "./characters/types";
 
 const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 
 initCameraControls(canvas);
 
+// everyone's home spot: [character, x, y]
+const SPAWNS: [Character, number, number][] = [
+  [cory, -500, 100], // downstairs work area
+  [leland, -300, -100], // upstairs work area
+  [eric, -100, -75], // kitchen
+  [hirai, -250, 120], // downstairs work area
+  [yp, 100, 80], // arcade room
+  [tiffany, -550, -90], // games team area
+  [tyler, -460, -60], // games team area
+  [yanghua, 100, -110], // upstairs office
+];
+
 const humanoids = loadHumanoids();
-if (humanoids.length === 0) {
-  humanoids.push(new Humanoid(cory, -500, 100));
-  humanoids.push(new Humanoid(leland, -300, -100));
+// anyone not in the save (fresh start, or a newly added character) spawns
+// at their home spot
+for (const [character, x, y] of SPAWNS) {
+  if (!humanoids.some((humanoid) => humanoid.character === character)) {
+    humanoids.push(new Humanoid(character, x, y));
+  }
 }
 
 // places saved items into rooms and carrying arrays; when no save exists,
