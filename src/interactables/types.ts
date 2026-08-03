@@ -1,5 +1,6 @@
 import type { Humanoid } from "../humanoid";
 import type { SimTool } from "../tools";
+import { PALETTE } from "../theme";
 
 export abstract class Interactable {
   abstract name: string;
@@ -21,7 +22,12 @@ export abstract class Interactable {
       ctx.font = "6px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = "#000";
+      // outlined, because the floor underneath it can be any material
+      ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = PALETTE.itemTextShadow;
+      ctx.strokeText(this.name, this.position.x, this.position.y);
+      ctx.fillStyle = PALETTE.itemText;
       ctx.fillText(this.name, this.position.x, this.position.y);
 
       ctx.restore();

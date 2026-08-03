@@ -1,4 +1,5 @@
 import { ROOMS, Room } from "./rooms";
+import { floorPattern, hashSeed, mulberry32, PALETTE } from "./theme";
 
 // geometry helpers over the rooms defined in src/rooms; re-exported so
 // existing imports keep working
@@ -149,52 +150,168 @@ export function doorLanding(from: Room, to: Room): { x: number; y: number } {
   };
 }
 
+// wall band straddling each room edge: half of it sits inside the room, which
+// is why nothing is ever placed within 12 units of a wall (see doorLanding)
+const WALL = 8;
+// how far a wall's shadow reaches across the floor
+const SHADOW_DEPTH = 18;
+
+// pools of warm ceiling light on the floor — deterministic per room so they
+// don't crawl between frames
+function drawLightPools(ctx: CanvasRenderingContext2D, room: Room) {
+  const random = mulberry32(hashSeed(room.name));
+  const count = 2 + Math.floor((room.w * room.h) / 40000);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(room.x, room.y, room.w, room.h);
+  ctx.clip();
+  for (let i = 0; i < count; i++) {
+    const x = room.x + room.w * (0.15 + random() * 0.7);
+    const y = room.y + room.h * (0.15 + random() * 0.7);
+    const radius = Math.min(room.w, room.h) * (0.45 + random() * 0.45);
+    const pool = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    pool.addColorStop(0, PALETTE.light);
+    pool.addColorStop(1, "rgba(255, 216, 158, 0)");
+    ctx.fillStyle = pool;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+  ctx.restore();
+}
+
+// the dark the walls throw inward, which is what gives the flat top-down view
+// its sense of height
+function drawWallShadow(ctx: CanvasRenderingContext2D, room: Room) {
+  const right = room.x + room.w;
+  const bottom = room.y + room.h;
+  // each entry runs from the wall inward: [x0, y0, x1, y1, fill rect]
+  const edges: [number, number, number, number, number[]][] = [
+    [room.x, room.y, room.x, room.y + SHADOW_DEPTH, [room.x, room.y, room.w, SHADOW_DEPTH]],
+    [room.x, bottom, room.x, bottom - SHADOW_DEPTH, [room.x, bottom - SHADOW_DEPTH, room.w, SHADOW_DEPTH]],
+    [room.x, room.y, room.x + SHADOW_DEPTH, room.y, [room.x, room.y, SHADOW_DEPTH, room.h]],
+    [right, room.y, right - SHADOW_DEPTH, room.y, [right - SHADOW_DEPTH, room.y, SHADOW_DEPTH, room.h]],
+  ];
+  for (const [x0, y0, x1, y1, rect] of edges) {
+    const gradient = ctx.createLinearGradient(x0, y0, x1, y1);
+    gradient.addColorStop(0, PALETTE.wallShadow);
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(rect[0]!, rect[1]!, rect[2]!, rect[3]!);
+  }
+}
+
+// the rectangle a doorway occupies within the wall band
+function doorRect(
+  room: Room,
+  other: Room,
+): { x: number; y: number; w: number; h: number; vertical: boolean } {
+  const door = doorBetween(room, other);
+  const overlapX =
+    Math.min(room.x + room.w, other.x + other.w) - Math.max(room.x, other.x);
+  const overlapY =
+    Math.min(room.y + room.h, other.y + other.h) - Math.max(room.y, other.y);
+  const vertical = overlapX < overlapY; // the shared wall runs north-south
+  return vertical
+    ? {
+        x: door.x - WALL / 2,
+        y: door.y - DOOR_WIDTH / 2,
+        w: WALL,
+        h: DOOR_WIDTH,
+        vertical,
+      }
+    : {
+        x: door.x - DOOR_WIDTH / 2,
+        y: door.y - WALL / 2,
+        w: DOOR_WIDTH,
+        h: WALL,
+        vertical,
+      };
+}
+
 export function drawHouse(ctx: CanvasRenderingContext2D) {
   ctx.save();
 
-  ctx.strokeStyle = "#000";
-  ctx.fillStyle = "#fff";
-  ctx.lineWidth = 2;
+  // floors, then the light on them, then the shadow the walls cast over both
   for (const room of ROOMS) {
+    ctx.fillStyle = floorPattern(ctx, room.floor);
     ctx.fillRect(room.x, room.y, room.w, room.h);
+  }
+  for (const room of ROOMS) drawLightPools(ctx, room);
+  for (const room of ROOMS) drawWallShadow(ctx, room);
+
+  // walls: one band centred on every room edge, so shared walls between two
+  // rooms land on the same line and merge into a single wall
+  ctx.lineJoin = "miter";
+  for (const room of ROOMS) {
+    ctx.strokeStyle = PALETTE.wall;
+    ctx.lineWidth = WALL;
     ctx.strokeRect(room.x, room.y, room.w, room.h);
   }
+  for (const room of ROOMS) {
+    // dark outer seam and a lit lip on the room side, in that order
+    ctx.strokeStyle = PALETTE.wallEdge;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(
+      room.x - WALL / 2,
+      room.y - WALL / 2,
+      room.w + WALL,
+      room.h + WALL,
+    );
+    ctx.strokeStyle = PALETTE.wallLip;
+    ctx.strokeRect(
+      room.x + WALL / 2,
+      room.y + WALL / 2,
+      room.w - WALL,
+      room.h - WALL,
+    );
+  }
 
-  // door openings: paint a white gap over the shared wall
-  ctx.fillStyle = "#fff";
+  // doorways: cut the wall band and glaze the opening
   for (const room of ROOMS) {
     for (const doorName of room.doors) {
       const other = roomByName(doorName);
       if (!other || other.name < room.name) continue; // draw each pair once
-      const door = doorBetween(room, other);
-      const overlapX =
-        Math.min(room.x + room.w, other.x + other.w) -
-        Math.max(room.x, other.x);
-      const overlapY =
-        Math.min(room.y + room.h, other.y + other.h) -
-        Math.max(room.y, other.y);
-      if (overlapX < overlapY) {
-        // vertical shared wall
-        ctx.fillRect(door.x - 3, door.y - DOOR_WIDTH / 2, 6, DOOR_WIDTH);
+      const { x, y, w, h, vertical } = doorRect(room, other);
+      ctx.fillStyle = PALETTE.doorBase;
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = PALETTE.doorGlass;
+      ctx.fillRect(x, y, w, h);
+      // frame posts at the jambs, and the seam where the two leaves meet
+      ctx.fillStyle = PALETTE.doorFrame;
+      if (vertical) {
+        ctx.fillRect(x, y, w, 1);
+        ctx.fillRect(x, y + h - 1, w, 1);
+        ctx.fillRect(x + w / 2 - 0.5, y + 2, 1, h - 4);
       } else {
-        ctx.fillRect(door.x - DOOR_WIDTH / 2, door.y - 3, DOOR_WIDTH, 6);
+        ctx.fillRect(x, y, 1, h);
+        ctx.fillRect(x + w - 1, y, 1, h);
+        ctx.fillRect(x + 2, y + h / 2 - 0.5, w - 4, 1);
       }
     }
   }
 
-  ctx.font = "10px monospace";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
-  const lineHeight = 12;
+  // room names in the top-left corner of each room, just inside the wall —
+  // small tracked-out caps, outlined so they read over any floor material
+  ctx.font = "7px monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.letterSpacing = "1px"; // ignored by engines that don't support it
+  ctx.lineJoin = "round";
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = PALETTE.labelShadow;
+  const lineHeight = 9;
+  const inset = WALL / 2 + 4; // clear the wall band, then a little breathing room
   for (const room of ROOMS) {
-    const center = roomCenter(room);
-    const lines = wrapText(ctx, room.name, room.w - 8);
-    const startY = center.y - ((lines.length - 1) * lineHeight) / 2;
+    const maxWidth = room.w - inset * 2;
+    const lines = wrapText(ctx, room.name.toUpperCase(), maxWidth);
     lines.forEach((line, i) => {
-      ctx.fillText(line, center.x, startY + i * lineHeight + 1, room.w - 8);
+      const x = room.x + inset;
+      const y = room.y + inset + i * lineHeight;
+      ctx.strokeText(line, x, y, maxWidth);
+      ctx.fillStyle = PALETTE.label;
+      ctx.fillText(line, x, y, maxWidth);
     });
   }
+  ctx.letterSpacing = "0px";
 
   ctx.restore();
 }

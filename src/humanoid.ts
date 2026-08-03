@@ -17,6 +17,7 @@ import {
 } from "./camera";
 import { speak } from "./tts";
 import { simNow } from "./time";
+import { PALETTE, silhouette } from "./theme";
 import type { Character } from "./characters/types";
 import type { Status } from "./statuses/types";
 
@@ -73,6 +74,45 @@ function spriteFor(src: string): HTMLImageElement {
     spriteCache.set(src, image);
   }
   return image;
+}
+
+// dark clothing on a dark floor loses its edge, so every sprite gets a soft
+// halo of its own shape behind it — reads as ceiling light catching the figure
+const rimCache = new Map<string, HTMLCanvasElement>();
+
+function rimFor(src: string, image: HTMLImageElement): HTMLCanvasElement | null {
+  const cached = rimCache.get(src);
+  if (cached) return cached;
+  if (!image.complete || image.naturalWidth === 0) return null; // retry next frame
+  const rim = silhouette(image, PALETTE.rim);
+  rimCache.set(src, rim);
+  return rim;
+}
+
+const RIM_OFFSETS = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+] as const;
+
+// halo + sprite, drawn around the humanoid's own origin
+function drawRimmedSprite(
+  ctx: CanvasRenderingContext2D,
+  src: string,
+  image: HTMLImageElement,
+  half: number,
+) {
+  const rim = rimFor(src, image);
+  if (rim) {
+    ctx.save();
+    ctx.globalAlpha = ctx.globalAlpha * 0.32;
+    for (const [dx, dy] of RIM_OFFSETS) {
+      ctx.drawImage(rim, -half + dx, -half - 4 + dy, SPRITE_SIZE, SPRITE_SIZE);
+    }
+    ctx.restore();
+  }
+  ctx.drawImage(image, -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE);
 }
 
 // remember() an event for every living humanoid in the source's room, except
@@ -722,7 +762,7 @@ export class Humanoid {
       ctx.translate(Math.round(this.x), Math.round(this.y));
       ctx.rotate(Math.PI / 2);
       ctx.globalAlpha = 0.5;
-      ctx.drawImage(sprite, -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE);
+      drawRimmedSprite(ctx, this.character.sprite, sprite, half);
       ctx.restore();
       return;
     }
@@ -730,7 +770,7 @@ export class Humanoid {
     ctx.save();
     ctx.translate(Math.round(this.x), Math.round(this.y) - arc * HOP_HEIGHT);
     ctx.rotate(arc * this.hopTilt);
-    ctx.drawImage(sprite, -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE);
+    drawRimmedSprite(ctx, this.character.sprite, sprite, half);
     ctx.restore();
   }
 
@@ -738,9 +778,20 @@ export class Humanoid {
     ctx.save();
     ctx.translate(this.x, this.y);
 
+    // contact shadow: it stays on the floor while a hop lifts the sprite, and
+    // shrinks with the height of the arc
+    const arc = this.dead ? 0 : Math.sin(Math.PI * this.hopT);
+    ctx.save();
+    ctx.beginPath();
+    // y sits at the sprite's feet: it is drawn from -SPRITE_SIZE/2 - 4 downward
+    ctx.ellipse(0, 12, 8 - arc, 3 - arc * 0.5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = PALETTE.bodyShadow;
+    ctx.fill();
+    ctx.restore();
+
     ctx.textAlign = "center";
     ctx.font = "9px monospace";
-    ctx.fillStyle = "#999";
+    ctx.fillStyle = PALETTE.nameText;
     // ctx.fillText(
     //   this.dead ? `${this.character.name} (dead)` : this.character.name,
     //   0,

@@ -9,4 +9,5 @@ export const gameRoom = new Room({
   h: 75,
   doors: ["Arcade Room"],
   interactables: [],
+  floor: "wood",
 });
