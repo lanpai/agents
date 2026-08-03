@@ -2,7 +2,7 @@ import { Room } from "./types";
 
 export const gameRoom = new Room({
   name: "Game Room",
-  promptName: "the game room",
+  promptName: "the game room (downstairs)",
   x: 0,
   y: -75,
   w: 100,

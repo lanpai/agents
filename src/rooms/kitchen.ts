@@ -3,7 +3,7 @@ import { Room } from "./types";
 
 export const kitchen = new Room({
   name: "Kitchen",
-  promptName: "the upstairs kitchen",
+  promptName: "the kitchen (upstairs)",
   x: -200,
   y: -150,
   w: 200,

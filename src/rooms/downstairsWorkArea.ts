@@ -2,7 +2,7 @@ import { Room } from "./types";
 
 export const downstairsWorkArea = new Room({
   name: "Downstairs Work Area",
-  promptName: "the downstairs work area",
+  promptName: "the downstairs work area (downstairs)",
   x: -600,
   y: 0,
   w: 600,
