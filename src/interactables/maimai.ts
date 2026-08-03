@@ -2,6 +2,7 @@ import type { Humanoid } from "../humanoid";
 import { roomOf } from "../locations";
 import { logEmote } from "../log";
 import type { SimTool } from "../tools";
+import { approachAndUse } from "../tools/shared";
 import { Interactable } from "./types";
 
 export class Maimai extends Interactable {
@@ -9,6 +10,7 @@ export class Maimai extends Interactable {
   onGroundDescription = "You see a maimai DX cabinet.";
 
   override onGroundTools(_humanoid: Humanoid): SimTool[] {
+    const cabinet = this;
     return [
       {
         name: "play_maimai",
@@ -20,24 +22,28 @@ export class Maimai extends Interactable {
           },
         },
         execute(humanoid, world) {
-          const room = roomOf(humanoid.x, humanoid.y);
+          const play = () => {
+            const room = roomOf(humanoid.x, humanoid.y);
 
-          humanoid.remember(
-            "You played a game of maimai on the maimai DX cabinet.",
-          );
-
-          for (const witness of world) {
-            if (witness === humanoid || witness.dead) continue;
-            if (roomOf(witness.x, witness.y) !== room) continue;
-            witness.remember(
-              `You saw ${humanoid.character.name} play a game of maimai on the maimai DX cabinet.`,
+            humanoid.remember(
+              "You played a game of maimai on the maimai DX cabinet.",
             );
-          }
 
-          logEmote(
-            `${humanoid.character.name} plays a game of maimai.`,
-            humanoid,
-          );
+            for (const witness of world) {
+              if (witness === humanoid || witness.dead) continue;
+              if (roomOf(witness.x, witness.y) !== room) continue;
+              witness.remember(
+                `You saw ${humanoid.character.name} play a game of maimai on the maimai DX cabinet.`,
+              );
+            }
+
+            logEmote(
+              `${humanoid.character.name} plays a game of maimai.`,
+              humanoid,
+            );
+          };
+          if (!cabinet.position) return play();
+          approachAndUse(humanoid, cabinet.position, "maimai DX cabinet", play);
         },
       },
     ];

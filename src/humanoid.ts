@@ -218,6 +218,9 @@ export class Humanoid {
     damage: number;
     verb: StrikeVerb;
   } | null = null;
+  // an interaction queued from too far away (e.g. playing an arcade cabinet):
+  // update() runs the act the moment the spot is within arm's reach
+  pendingUse: { x: number; y: number; act: () => void } | null = null;
   speech: { text: string; until: number } | null = null;
   emote: { text: string } | null = null; // *action* bubble, lives as long as its hold
   // freezes the room until the camera has watched the emote (wall-time seconds)
@@ -381,6 +384,7 @@ export class Humanoid {
     this.pendingPath = rest;
     this.followName = null;
     this.pendingStrike = null; // a new order drops any queued blow
+    this.pendingUse = null;
     this.running = running;
     const gait = running ? "running" : "walking";
     this.remember(`You started ${gait} to ${roomPromptName}.`);
@@ -392,6 +396,7 @@ export class Humanoid {
     this.target = null;
     this.pendingPath = [];
     this.pendingStrike = null; // a new order drops any queued blow
+    this.pendingUse = null;
     this.running = running;
     const gait = running ? "running" : "walking";
     this.remember(`You started ${gait} toward ${name}.`);
@@ -421,6 +426,7 @@ export class Humanoid {
     this.pendingPath = [];
     this.followName = null;
     this.pendingStrike = null; // dropping the pursuit drops the queued blow
+    this.pendingUse = null;
     this.running = false;
   }
 
@@ -484,6 +490,7 @@ export class Humanoid {
     this.pendingPath = [];
     this.followName = null;
     this.pendingStrike = null;
+    this.pendingUse = null;
     this.speech = null;
     const myRoom = roomOf(this.x, this.y);
     // whatever they carried spills onto the body
@@ -654,6 +661,20 @@ export class Humanoid {
           world,
           now,
         );
+      }
+    }
+
+    // a queued interaction fires the moment its spot is within arm's reach
+    if (this.pendingUse) {
+      const use = this.pendingUse;
+      if (Math.hypot(use.x - this.x, use.y - this.y) <= TOUCH_RANGE) {
+        // stop silently — the act's own memory explains the halt
+        this.pendingUse = null;
+        this.target = null;
+        this.pendingPath = [];
+        this.followName = null;
+        this.running = false;
+        use.act();
       }
     }
 
