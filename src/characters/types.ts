@@ -13,9 +13,18 @@ export type Voice = {
   vibratoRate?: number; // wobbles per second
 };
 
+// a walk sheet built by scripts/make_sprite_sheet.py: four square cells per row,
+// one row per facing in the order front, back, left, right
+export type SpriteSheet = {
+  src: string; // image path under public/
+  cell: number; // pixel size of one square cell
+  frames: number; // poses per row
+  frameMs: number; // how long one pose is held
+};
+
 export type Character = {
   name: string;
-  sprite: string; // image path under public/, drawn at 16x16 world units
+  sprite: SpriteSheet; // drawn at SPRITE_SIZE world units square
   description: string;
   voice: Voice;
   initialMemory: string;

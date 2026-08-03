@@ -4,7 +4,7 @@ import type { Character } from "./types";
 
 export const tiffany: Character = {
   name: "Tiffany",
-  sprite: "/tiffany.png",
+  sprite: { src: "/tiffany_walk.png", cell: 96, frames: 4, frameMs: 250 },
   description: "",
   voice: {
     baseF0: 130,

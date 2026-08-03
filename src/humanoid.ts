@@ -19,7 +19,7 @@ import { speak } from "./tts";
 import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
 import { PALETTE, silhouette } from "./theme";
-import type { Character } from "./characters/types";
+import type { Character, SpriteSheet } from "./characters/types";
 import type { Status } from "./statuses/types";
 
 export const UNITS_PER_FOOT = 10;
@@ -77,6 +77,18 @@ function spriteFor(src: string): HTMLImageElement {
   return image;
 }
 
+// sheet rows, in the order scripts/make_sprite_sheet.py lays them out. Front
+// doubles as the idle animation: it is what plays whenever nobody is walking.
+const FACINGS = ["front", "back", "left", "right"] as const;
+export type Facing = (typeof FACINGS)[number];
+const FACING_ROW: Record<Facing, number> = { front: 0, back: 1, left: 2, right: 3 };
+
+// which way a velocity points; the dominant axis wins, and down is front
+function facingOf(vx: number, vy: number): Facing {
+  if (Math.abs(vx) > Math.abs(vy)) return vx > 0 ? "right" : "left";
+  return vy > 0 ? "front" : "back";
+}
+
 // dark clothing on a dark floor loses its edge, so every sprite gets a soft
 // halo of its own shape behind it — reads as ceiling light catching the figure
 const rimCache = new Map<string, HTMLCanvasElement>();
@@ -100,23 +112,35 @@ const RIM_OFFSETS = [
   [0, 1],
 ] as const;
 
-// halo + sprite, drawn around the humanoid's own origin
+// halo + one cell of the walk sheet, drawn around the humanoid's own origin
 function drawRimmedSprite(
   ctx: CanvasRenderingContext2D,
-  src: string,
+  sheet: SpriteSheet,
   image: HTMLImageElement,
   half: number,
+  facing: Facing,
+  frame: number,
 ) {
-  const rim = rimFor(src, image);
+  const sx = frame * sheet.cell;
+  const sy = FACING_ROW[facing] * sheet.cell;
+  const rim = rimFor(sheet.src, image);
   if (rim) {
     ctx.save();
     ctx.globalAlpha = ctx.globalAlpha * 0.32;
     for (const [dx, dy] of RIM_OFFSETS) {
-      ctx.drawImage(rim, -half + dx, -half - 4 + dy, SPRITE_SIZE, SPRITE_SIZE);
+      ctx.drawImage(
+        rim,
+        sx, sy, sheet.cell, sheet.cell,
+        -half + dx, -half - 4 + dy, SPRITE_SIZE, SPRITE_SIZE,
+      );
     }
     ctx.restore();
   }
-  ctx.drawImage(image, -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE);
+  ctx.drawImage(
+    image,
+    sx, sy, sheet.cell, sheet.cell,
+    -half, -half - 4, SPRITE_SIZE, SPRITE_SIZE,
+  );
 }
 
 // remember() an event for every living humanoid in the source's room, except
@@ -235,6 +259,8 @@ export class Humanoid {
   vy = 0;
   hopT = 0; // 0 = grounded, (0,1) = mid-hop arc
   hopTilt = 0;
+  facing: Facing = "front"; // which row of the walk sheet is playing
+  animT = 0; // ms into the walk cycle; runs on sim time, so it stops when a room freezes
 
   statuses = new Map<string, Status>();
 
@@ -678,6 +704,12 @@ export class Humanoid {
     }
 
     const moving = this.isMoving();
+    // the walk cycle runs at the source video's tempo whether walking or idling
+    // — standing still just means the front row keeps playing
+    const sheet = this.character.sprite;
+    this.animT = (this.animT + dt * 1000) % (sheet.frames * sheet.frameMs);
+    if (moving) this.facing = facingOf(this.vx, this.vy);
+
     // advance the hop cycle while moving; if stopped mid-hop, finish the arc to land
     if (moving || this.hopT > 0) {
       if (this.hopT === 0)
@@ -766,23 +798,36 @@ export class Humanoid {
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    const sprite = spriteFor(this.character.sprite);
+    const sheet = this.character.sprite;
+    const sprite = spriteFor(sheet.src);
     if (!sprite.complete || sprite.naturalWidth === 0) return;
-    ctx.imageSmoothingEnabled = false;
+    // nearest-neighbour picks different source pixels every frame while the
+    // sprite is being minified, which reads as shimmer on fine detail — so
+    // filter when shrinking the cell and stay crisp once it's blown up
+    const onScreen = SPRITE_SIZE * camera.zoom;
+    ctx.imageSmoothingEnabled = onScreen < sheet.cell;
+    ctx.imageSmoothingQuality = "high";
     const half = SPRITE_SIZE / 2;
+    // standing still means the front row, which is the idle animation
+    const facing = this.isMoving() ? this.facing : "front";
+    const frame = Math.floor(this.animT / sheet.frameMs) % sheet.frames;
+    // snap to whole screen pixels, not whole world units: at high zoom one world
+    // unit is several pixels, so rounding in world space makes walking judder
+    const snap = (value: number) =>
+      Math.round(value * camera.zoom) / camera.zoom;
     if (this.dead) {
       ctx.save();
-      ctx.translate(Math.round(this.x), Math.round(this.y));
+      ctx.translate(snap(this.x), snap(this.y));
       ctx.rotate(Math.PI / 2);
-      drawRimmedSprite(ctx, this.character.sprite, sprite, half);
+      drawRimmedSprite(ctx, sheet, sprite, half, "front", 0);
       ctx.restore();
       return;
     }
     const arc = Math.sin(Math.PI * this.hopT);
     ctx.save();
-    ctx.translate(Math.round(this.x), Math.round(this.y) - arc * HOP_HEIGHT);
+    ctx.translate(snap(this.x), snap(this.y - arc * HOP_HEIGHT));
     ctx.rotate(arc * this.hopTilt);
-    drawRimmedSprite(ctx, this.character.sprite, sprite, half);
+    drawRimmedSprite(ctx, sheet, sprite, half, facing, frame);
     ctx.restore();
   }
 
