@@ -16,6 +16,7 @@ import {
   isCameraAutoFollowing,
 } from "./camera";
 import { queueBeat, speak } from "./tts";
+import { playCutscene, type Shot } from "./cutscene";
 import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
 import { PALETTE, silhouette } from "./theme";
@@ -239,7 +240,9 @@ export function updateActions(world: Humanoid[], dt: number) {
 
 // true while a one-shot still has frames to show — the room waits for it
 export function isPlayingAction(humanoid: Humanoid): boolean {
-  return humanoid.action !== null && humanoid.action.t < actionDuration(humanoid);
+  return (
+    humanoid.action !== null && humanoid.action.t < actionDuration(humanoid)
+  );
 }
 
 export function updateEmoteHolds(world: Humanoid[], dt: number) {
@@ -637,11 +640,37 @@ export class Humanoid {
       target.remember(`${this.character.name} ${verb.past} your ${part}!`);
       target.nextThinkAt = Math.min(target.nextThinkAt, now + 500);
     }
-    logEmote(
-      `${this.character.name} ${verb.present} ${target.character.name}'s ${part}`,
-      this,
-      target,
-    );
+    // logEmote(
+    //   `${this.character.name} ${verb.present} ${target.character.name}'s ${part}`,
+    //   this,
+    //   target,
+    // );
+
+    // a stab is a scene: every room freezes and the camera cuts in tight
+    // under letterbox while the swing plays out; a kill earns a second shot
+    // lingering on the body. No fade from black — the blow is the cut.
+    if (verb.present === "stabs") {
+      const stab = this.character.sprite.stab;
+      const shots: Shot[] = [
+        {
+          x: (this.x + target.x) / 2,
+          y: (this.y + target.y) / 2 - 10,
+          zoomFrom: 4.5,
+          zoomTo: 6,
+          duration: (stab.frames * stab.frameMs + 800) / 1000,
+        },
+      ];
+      if (target.dead) {
+        shots.push({
+          x: target.x,
+          y: target.y - 10,
+          zoomFrom: 5.5,
+          zoomTo: 6.2,
+          duration: 2.4,
+        });
+      }
+      playCutscene(shots, { openFade: false });
+    }
   }
 
   takeDamage(part: BodyPart, amount: number, world: Humanoid[], now: number) {
@@ -920,7 +949,9 @@ export class Humanoid {
     return {
       sheet,
       facing: walking ? this.facing : "front",
-      frame: walking ? Math.floor(this.animT / sheet.frameMs) % sheet.frames : 0,
+      frame: walking
+        ? Math.floor(this.animT / sheet.frameMs) % sheet.frames
+        : 0,
     };
   }
 

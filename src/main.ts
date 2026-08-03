@@ -207,7 +207,9 @@ function frame(wallNow: number) {
   last = wallNow;
   if (isCutscenePlaying()) {
     // a cutscene freezes every room: sim time holds still, nobody thinks or
-    // moves, and the cutscene drives the camera itself
+    // moves, and the cutscene drives the camera itself. One-shot animations
+    // still run — a stab scene IS its swing and collapse
+    updateActions(humanoids, dt);
     updateCutscene(dt);
   } else {
     if (!paused) {

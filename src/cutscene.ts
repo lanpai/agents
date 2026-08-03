@@ -28,18 +28,23 @@ let shotT = 0; // seconds into the current shot
 let elapsed = 0; // seconds into the whole cutscene
 let total = 0;
 let playing = false;
+let openFade = true; // fade up from black — right for the intro, wrong mid-scene
 
 export function isCutscenePlaying(): boolean {
   return playing;
 }
 
-export function playCutscene(sequence: Shot[]) {
+export function playCutscene(
+  sequence: Shot[],
+  options?: { openFade?: boolean },
+) {
   if (playing || sequence.length === 0) return;
   shots = sequence;
   index = 0;
   shotT = 0;
   elapsed = 0;
   total = sequence.reduce((sum, shot) => sum + shot.duration, 0);
+  openFade = options?.openFade ?? true;
   playing = true;
   window.addEventListener("keydown", skipOnEscape, true);
   applyCamera(); // cut to the first shot before the next frame draws
@@ -144,7 +149,7 @@ export function drawCutscene(ctx: CanvasRenderingContext2D) {
   }
 
   // fade up from black on the first beat
-  const fade = 1 - Math.min(1, elapsed / OPEN_FADE);
+  const fade = openFade ? 1 - Math.min(1, elapsed / OPEN_FADE) : 0;
   if (fade > 0) {
     ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
     ctx.fillRect(0, 0, w, h);
