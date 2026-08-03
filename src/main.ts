@@ -178,11 +178,12 @@ function draw(now: number) {
   // painter's order: lower on screen draws in front
   const sortedHumanoids = [...humanoids].sort((a, b) => a.y - b.y);
   for (const humanoid of sortedHumanoids) humanoid.drawUnderlay(ctx, now);
-  for (const humanoid of sortedHumanoids) humanoid.draw(ctx);
 
   for (const room of ROOMS) {
     for (const interactable of room.interactables) interactable.draw(ctx);
   }
+
+  for (const humanoid of sortedHumanoids) humanoid.draw(ctx);
 
   for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx);
 

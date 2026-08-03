@@ -1,6 +1,7 @@
 import { itemsIn } from "../interactables";
 import { roomOf } from "../locations";
 import { logEmote } from "../log";
+import { approachAndUse } from "./shared";
 import type { SimTool } from "./types";
 
 export const pickUp: SimTool = {
@@ -26,28 +27,43 @@ export const pickUp: SimTool = {
     };
   },
   execute(humanoid, world, input) {
-    const room = roomOf(humanoid.x, humanoid.y);
-    const item = itemsIn(room).find(
+    // the grab happens on arrival, re-finding the item in case someone else
+    // took it during the walk over
+    const grab = () => {
+      const room = roomOf(humanoid.x, humanoid.y);
+      const item = itemsIn(room).find(
+        (candidate) => candidate.name === input.item,
+      );
+      if (!item) {
+        humanoid.remember(
+          `You looked for the ${input.item}, but it isn't here.`,
+        );
+        return;
+      }
+      room.interactables.splice(room.interactables.indexOf(item), 1);
+      item.position = null;
+      humanoid.carrying.push(item);
+      humanoid.remember(`You picked up the ${item.name}.`);
+      for (const witness of world) {
+        if (witness === humanoid || witness.dead) continue;
+        if (roomOf(witness.x, witness.y) !== room) continue;
+        witness.remember(
+          `You saw ${humanoid.character.name} pick up the ${item.name}.`,
+        );
+      }
+      logEmote(
+        `${humanoid.character.name} picks up the ${item.name}.`,
+        humanoid,
+      );
+    };
+    const item = itemsIn(roomOf(humanoid.x, humanoid.y)).find(
       (candidate) => candidate.name === input.item,
     );
     if (!item) {
       humanoid.remember(`You looked for the ${input.item}, but it isn't here.`);
       return;
     }
-    room.interactables.splice(room.interactables.indexOf(item), 1);
-    item.position = null;
-    humanoid.carrying.push(item);
-    humanoid.remember(`You picked up the ${item.name}.`);
-    for (const witness of world) {
-      if (witness === humanoid || witness.dead) continue;
-      if (roomOf(witness.x, witness.y) !== room) continue;
-      witness.remember(
-        `You saw ${humanoid.character.name} pick up the ${item.name}.`,
-      );
-    }
-    logEmote(
-      `${humanoid.character.name} picks up the ${item.name}.`,
-      humanoid,
-    );
+    if (!item.position) return grab();
+    approachAndUse(humanoid, item.position, item.name, grab);
   },
 };
