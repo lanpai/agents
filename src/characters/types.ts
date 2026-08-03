@@ -1,8 +1,13 @@
 import type { Humanoid } from "../humanoid";
 
-// settings for the klattsch formant synthesizer; passed straight to
-// compileString as the voice's initial state
+// Qwen uses speakerEmbedding/ttsVoice when available. The formant settings
+// remain as a browser-only fallback when the Qwen server is unavailable.
 export type Voice = {
+  // Qwen3-TTS Base embeddings are 1024-dim (0.6B) or 2048-dim (1.7B).
+  // Keep this optional while a character is waiting for its final embedding.
+  speakerEmbedding?: readonly number[];
+  // A registered server-side voice profile. Defaults to web_nori_v0.
+  ttsVoice?: string;
   baseF0: number; // fundamental pitch in Hz (~80 deep male, ~210 high female)
   rate: number; // ms per phoneme; 110 is neutral, higher speaks slower (clamped to 50-200)
   scale: number; // formant scale: <1 bigger/deeper vocal tract, >1 smaller/brighter

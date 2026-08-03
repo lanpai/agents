@@ -3,7 +3,16 @@ import Anthropic from "@anthropic-ai/sdk";
 
 // which model serves agent decisions; the frontend always speaks Anthropic
 // shapes — non-sonnet paths translate to/from OpenAI-compatible APIs
-const BACKEND = "deepseek" as "sonnet" | "k3" | "deepseek";
+type Backend = "sonnet" | "k3" | "deepseek" | "gemini";
+
+const configuredBackend = Bun.env.AGENT_BACKEND ?? "gemini";
+const BACKENDS: Backend[] = ["sonnet", "k3", "deepseek", "gemini"];
+if (!BACKENDS.includes(configuredBackend as Backend)) {
+  throw new Error(
+    `Invalid AGENT_BACKEND "${configuredBackend}". Expected one of: ${BACKENDS.join(", ")}`,
+  );
+}
+const BACKEND = configuredBackend as Backend;
 
 type OpenAICompatibleConfig = {
   label: string; // error-message prefix
@@ -50,6 +59,15 @@ const DEEPSEEK_FLASH: OpenAICompatibleConfig = {
   extraBody: { thinking: { type: "disabled" } },
 };
 
+const GEMINI_FLASH: OpenAICompatibleConfig = {
+  label: "gemini-flash",
+  url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+  model: Bun.env.GEMINI_MODEL ?? "gemini-3-flash-preview",
+  apiKeyEnv: "GOOGLE_GENERATIVE_AI_API_KEY",
+  timeoutMs: 30000,
+  maxTokensMultiplier: 1,
+};
+
 // fail fast: a hung upstream request would otherwise pin a frontend decision
 // slot for the SDK default of 10 minutes
 const client = new Anthropic({ timeout: 15000, maxRetries: 1 });
@@ -61,6 +79,132 @@ type AgentRequest = {
   tool_choice?: Anthropic.ToolChoice;
   max_tokens?: number;
 };
+
+type TtsRequest = {
+  text: string;
+  speakerEmbedding?: number[];
+  voice?: string;
+  serverUrl?: string;
+};
+
+const QWEN_TTS_URL = (Bun.env.QWEN_TTS_URL ?? "http://127.0.0.1:9001").replace(
+  /\/$/,
+  "",
+);
+const QWEN_TTS_MODEL = Bun.env.QWEN_TTS_MODEL ?? "/opt/models/qwen3-tts";
+const QWEN_TTS_DEFAULT_VOICE =
+  Bun.env.QWEN_TTS_DEFAULT_VOICE ?? "web_nori_v0";
+
+function requestTtsUrl(value: unknown): string | null {
+  if (value === undefined) return QWEN_TTS_URL;
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    const isLoopback =
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "localhost" ||
+      url.hostname === "[::1]";
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !isLoopback ||
+      !url.port ||
+      url.username ||
+      url.password
+    )
+      return null;
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+async function callQwenTts(req: Request): Promise<Response> {
+  let body: TtsRequest;
+  try {
+    body = (await req.json()) as TtsRequest;
+  } catch {
+    return Response.json({ error: "invalid JSON body" }, { status: 400 });
+  }
+
+  if (typeof body.text !== "string" || body.text.trim().length === 0) {
+    return Response.json({ error: "text must be a non-empty string" }, { status: 400 });
+  }
+  if (body.text.length > 4000) {
+    return Response.json({ error: "text exceeds 4000 characters" }, { status: 400 });
+  }
+
+  const ttsUrl = requestTtsUrl(body.serverUrl);
+  if (!ttsUrl) {
+    return Response.json(
+      { error: "serverUrl must be an http(s) loopback URL with a port" },
+      { status: 400 },
+    );
+  }
+
+  const embedding = body.speakerEmbedding;
+  if (
+    embedding !== undefined &&
+    (!Array.isArray(embedding) ||
+      embedding.length === 0 ||
+      embedding.length > 4096 ||
+      !embedding.every((value) =>
+        typeof value === "number" && Number.isFinite(value)))
+  ) {
+    return Response.json(
+      { error: "speakerEmbedding must be a non-empty finite number array" },
+      { status: 400 },
+    );
+  }
+
+  const payload: Record<string, unknown> = {
+    model: QWEN_TTS_MODEL,
+    input: body.text,
+    task_type: "Base",
+    language: "English",
+    stream: true,
+    response_format: "pcm",
+  };
+  if (embedding) {
+    payload.speaker_embedding = embedding;
+    payload.x_vector_only_mode = true;
+  } else {
+    payload.voice =
+      typeof body.voice === "string" && body.voice.length > 0
+        ? body.voice
+        : QWEN_TTS_DEFAULT_VOICE;
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${ttsUrl}/v1/audio/speech`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(120000)]),
+    });
+  } catch (error) {
+    return Response.json(
+      { error: `Qwen TTS unavailable: ${String(error)}` },
+      { status: 502 },
+    );
+  }
+
+  if (!upstream.ok) {
+    const detail = await upstream.text().catch(() => "");
+    return Response.json(
+      { error: `Qwen TTS ${upstream.status}: ${detail.slice(0, 500)}` },
+      { status: 502 },
+    );
+  }
+
+  return new Response(upstream.body, {
+    headers: {
+      "content-type": upstream.headers.get("content-type") ?? "audio/pcm",
+      "cache-control": "no-store",
+      "x-audio-sample-rate": "24000",
+    },
+  });
+}
 
 async function callSonnet(body: AgentRequest): Promise<Response> {
   try {
@@ -192,19 +336,23 @@ async function callOpenAICompatible(
 }
 
 Bun.serve({
-  port: 3001,
+  port: Number(Bun.env.API_PORT ?? 3002),
   routes: {
+    "/api/health": Response.json({ ok: true, backend: BACKEND }),
+    "/api/tts": { POST: callQwenTts },
     "/api/agent": {
       POST: async (req) => {
         const body = (await req.json()) as AgentRequest;
         if (BACKEND === "k3") return callOpenAICompatible(KIMI, body);
         if (BACKEND === "deepseek") return callOpenAICompatible(DEEPSEEK, body);
+        if (BACKEND === "gemini") return callOpenAICompatible(GEMINI_FLASH, body);
         return callSonnet(body);
       },
     },
     "/api/flash": {
       POST: async (req) => {
         const body = (await req.json()) as AgentRequest;
+        if (BACKEND === "gemini") return callOpenAICompatible(GEMINI_FLASH, body);
         return callOpenAICompatible(DEEPSEEK_FLASH, body);
       },
     },
@@ -212,5 +360,5 @@ Bun.serve({
 });
 
 console.log(
-  `agent API listening on http://localhost:3001 (backend: ${BACKEND})`,
+  `agent API listening on http://localhost:${Bun.env.API_PORT ?? 3002} (backend: ${BACKEND})`,
 );

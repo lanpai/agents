@@ -3,6 +3,11 @@ import { agentCalls } from "./calls";
 import { setCameraAutoFollow } from "./camera";
 import { roomOf } from "./locations";
 import { selected } from "./selection";
+import {
+  getTtsServerUrl,
+  setTtsServerUrl,
+  TTS_SERVER_PRESETS,
+} from "./ttsSettings";
 
 const REFRESH_MS = 250;
 
@@ -59,6 +64,53 @@ export function initSidebar(options: {
   const buttons = document.createElement("div");
   buttons.append(pauseButton, clearButton);
 
+  const ttsSettings = document.createElement("div");
+  Object.assign(ttsSettings.style, { marginTop: "12px" });
+  const ttsLabel = document.createElement("label");
+  ttsLabel.textContent = "TTS server URL";
+  ttsLabel.htmlFor = "tts-server-url";
+  const ttsInput = document.createElement("input");
+  ttsInput.id = "tts-server-url";
+  ttsInput.type = "url";
+  ttsInput.setAttribute("list", "tts-server-presets");
+  ttsInput.value = getTtsServerUrl();
+  Object.assign(ttsInput.style, {
+    boxSizing: "border-box",
+    display: "block",
+    font: "12px monospace",
+    marginTop: "4px",
+    padding: "5px",
+    width: "100%",
+  });
+  const ttsPresets = document.createElement("datalist");
+  ttsPresets.id = "tts-server-presets";
+  for (const value of TTS_SERVER_PRESETS) {
+    const option = document.createElement("option");
+    option.value = value;
+    ttsPresets.appendChild(option);
+  }
+  const ttsStatus = document.createElement("div");
+  Object.assign(ttsStatus.style, { minHeight: "16px", marginTop: "3px" });
+  ttsStatus.textContent = "used for the next spoken line";
+  const saveTtsUrl = () => {
+    try {
+      ttsInput.value = setTtsServerUrl(ttsInput.value);
+      ttsStatus.textContent = "saved — used for the next spoken line";
+      ttsStatus.style.color = "#176b2c";
+    } catch (error) {
+      ttsStatus.textContent = String(error);
+      ttsStatus.style.color = "#a00";
+    }
+  };
+  ttsInput.addEventListener("change", saveTtsUrl);
+  ttsInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveTtsUrl();
+    ttsInput.blur();
+  });
+  ttsSettings.append(ttsLabel, ttsInput, ttsPresets, ttsStatus);
+
   const selectedHeader = document.createElement("h3");
   selectedHeader.textContent = "selected";
   const selectedSection = document.createElement("div");
@@ -69,6 +121,7 @@ export function initSidebar(options: {
 
   sidebar.append(
     buttons,
+    ttsSettings,
     selectedHeader,
     selectedSection,
     callsHeader,

@@ -1,17 +1,18 @@
-// speech through klattsch, a primitive parallel-formant synthesizer (the
-// late-70s speech-chip sound). A line is voiced in two steps: an LLM call
-// transcribes the English text into ARPABET phonemes, then the compiled
-// formant schedule plays through an AudioWorklet. Lines play one at a time,
-// in the order they were queued.
+// Speech streams as raw 24 kHz PCM from the backend's Qwen3-TTS proxy. If the
+// Qwen server is unavailable, klattsch remains as a browser-only fallback.
+// Lines play one at a time, in the order they were queued.
 
 import { compileString, PHONEME_KEYS } from "klattsch";
 import workletUrl from "klattsch/formant-worklet.js?url";
 import { recordAgentCall } from "./calls";
 import type { Voice } from "./characters/types";
+import { getTtsServerUrl } from "./ttsSettings";
 
 const MAX_QUEUE = 8;
 const PHONEME_TIMEOUT_MS = 15000;
 const LINE_GAP_MS = 250; // breath between consecutive lines
+const QWEN_SAMPLE_RATE = 24000;
+const QWEN_START_LEAD_SECONDS = 0.12;
 
 type Line = {
   text: string;
@@ -36,18 +37,28 @@ export function isSpeaking(): boolean {
 // hold all speech until the first interaction (callers fall back to timed
 // bubbles) and build the context inside the gesture handler so resume() works
 let unlocked = false;
-let audioReady: Promise<{ node: AudioWorkletNode; gain: GainNode }> | null =
-  null;
+type AudioOutput = {
+  context: AudioContext;
+  formantNode: AudioWorkletNode | null;
+  gain: GainNode;
+};
+
+let audioReady: Promise<AudioOutput> | null = null;
 
 async function initAudio() {
   const ctx = new AudioContext();
-  await ctx.audioWorklet.addModule(workletUrl);
-  const node = new AudioWorkletNode(ctx, "formant-processor");
   const gain = ctx.createGain();
-  node.connect(gain);
   gain.connect(ctx.destination);
+  let formantNode: AudioWorkletNode | null = null;
+  try {
+    await ctx.audioWorklet.addModule(workletUrl);
+    formantNode = new AudioWorkletNode(ctx, "formant-processor");
+    formantNode.connect(gain);
+  } catch {
+    // Qwen PCM playback only needs the AudioContext and remains available.
+  }
   await ctx.resume();
-  return { node, gain };
+  return { context: ctx, formantNode, gain };
 }
 
 const unlock = () => {
@@ -81,38 +92,164 @@ export function speak(
   return true;
 }
 
-// plays the queue one line at a time: transcribe, compile, post the schedule
-// to the worklet, and hold until the compiled duration has elapsed
+// Plays the queue one line at a time. Qwen failures before audio begins fall
+// back to the formant synthesizer; either path holds the line until playback
+// has ended so speech bubbles and room freezing stay synchronized.
 async function pump() {
   if (playing) return;
   const line = queue.shift();
   if (!line) return;
   playing = true;
 
-  // if transcription or audio setup fails the line goes unvoiced, but the
-  // bubble and the speaking flag still need a lifetime: fall back to reading time
-  let durationMs = 2000 + line.text.length * 60;
+  let started = false;
+  const startLine = () => {
+    if (started) return;
+    started = true;
+    line.onStart?.();
+  };
   try {
     if (!audioReady) throw new Error("audio not unlocked");
-    const [audio, phonemes] = await Promise.all([audioReady, phonemize(line)]);
-    const { schedule, totalMs } = compileString(phonemes, {
-      ...line.voice,
-      rate: clampRate(line.voice.rate),
-    });
-    audio.gain.gain.value = line.volume;
-    audio.node.port.postMessage({ type: "schedule", schedule });
-    durationMs = totalMs;
+    const audio = await audioReady;
+    try {
+      await playQwen(line, audio, startLine);
+    } catch {
+      await playFormant(line, audio, startLine);
+    }
   } catch {
-    // unvoiced line: onStart/onEnd below still run the timed bubble
+    // No audio path: retain the old timed speech-bubble behavior.
+    startLine();
+    await delay(2000 + line.text.length * 60);
   }
-  line.onStart?.();
-  setTimeout(() => {
-    line.onEnd?.();
-    queued--;
-    playing = false;
-    void pump();
-  }, durationMs + LINE_GAP_MS);
+  line.onEnd?.();
+  await delay(LINE_GAP_MS);
+  queued--;
+  playing = false;
+  void pump();
 }
+
+async function playQwen(
+  line: Line,
+  audio: AudioOutput,
+  onStart: () => void,
+) {
+  const record = recordAgentCall({
+    humanoid: line.speaker,
+    kind: "tts",
+    messages: line.text,
+    tools: [],
+  });
+  let nextStartAt: number | null = null;
+  let receivedBytes = 0;
+  try {
+    const response = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      signal: AbortSignal.timeout(120000),
+      body: JSON.stringify({
+        text: line.text,
+        speakerEmbedding: line.voice.speakerEmbedding,
+        voice: line.voice.ttsVoice,
+        serverUrl: getTtsServerUrl(),
+      }),
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`TTS API ${response.status}`);
+    }
+
+    audio.gain.gain.value = line.volume;
+    const reader = response.body.getReader();
+    let pendingByte: number | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.length === 0) continue;
+      receivedBytes += value.length;
+
+      let bytes = value;
+      if (pendingByte !== null) {
+        const joined = new Uint8Array(value.length + 1);
+        joined[0] = pendingByte;
+        joined.set(value, 1);
+        bytes = joined;
+        pendingByte = null;
+      }
+      if (bytes.length % 2 !== 0) {
+        pendingByte = bytes[bytes.length - 1]!;
+        bytes = bytes.subarray(0, bytes.length - 1);
+      }
+      if (bytes.length === 0) continue;
+
+      const samples = new Float32Array(bytes.length / 2);
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      for (let index = 0; index < samples.length; index++) {
+        samples[index] = view.getInt16(index * 2, true) / 32768;
+      }
+
+      const buffer = audio.context.createBuffer(
+        1,
+        samples.length,
+        QWEN_SAMPLE_RATE,
+      );
+      buffer.copyToChannel(samples, 0);
+      const source = audio.context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(audio.gain);
+
+      if (nextStartAt === null) {
+        nextStartAt = audio.context.currentTime + QWEN_START_LEAD_SECONDS;
+        const waitMs = Math.max(
+          0,
+          (nextStartAt - audio.context.currentTime) * 1000,
+        );
+        setTimeout(onStart, waitMs);
+      } else {
+        nextStartAt = Math.max(nextStartAt, audio.context.currentTime + 0.01);
+      }
+      source.start(nextStartAt);
+      nextStartAt += buffer.duration;
+    }
+
+    if (nextStartAt === null) throw new Error("TTS API returned no PCM audio");
+    record.status = "ok";
+    record.result = [`${receivedBytes} PCM bytes`];
+    await delay(
+      Math.max(0, (nextStartAt - audio.context.currentTime) * 1000) + 20,
+    );
+  } catch (error) {
+    record.status = "error";
+    record.result = [String(error)];
+    // If a stream fails after playback began, let the received prefix finish
+    // instead of starting the fallback voice over the top of it.
+    if (nextStartAt !== null) {
+      await delay(
+        Math.max(0, (nextStartAt - audio.context.currentTime) * 1000) + 20,
+      );
+      return;
+    }
+    throw error;
+  }
+}
+
+async function playFormant(
+  line: Line,
+  audio: AudioOutput,
+  onStart: () => void,
+) {
+  if (!audio.formantNode) throw new Error("formant worklet unavailable");
+  const phonemes = await phonemize(line);
+  const { schedule, totalMs } = compileString(phonemes, {
+    ...line.voice,
+    rate: clampRate(line.voice.rate),
+  });
+  audio.gain.gain.value = line.volume;
+  audio.formantNode.port.postMessage({ type: "schedule", schedule });
+  onStart();
+  await delay(totalMs);
+}
+
+const delay = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
 const VALID_PHONEMES = new Set(PHONEME_KEYS);
 const PAUSE_MS: Record<string, number> = { ",": 100, ";": 200, ".": 300 };
