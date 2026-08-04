@@ -17,6 +17,7 @@ export const cory: Character = {
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "en", known: ["en"] },
   initialMemory: "",
   describeHumanoid: () =>
     "Cory is the CEO of Spellbrush. He is wearing a Spellbrush branded jacket with jeans.",

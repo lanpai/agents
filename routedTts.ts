@@ -2,6 +2,10 @@ import { Buffer } from "node:buffer";
 import { basename, resolve } from "node:path";
 import type { RoutedVoice } from "./src/characters/types";
 import type { SpeechEmotion } from "./src/speechEmotion";
+import {
+  SPEECH_LANGUAGE_NAMES,
+  type SpeechLanguage,
+} from "./src/speechLanguage";
 
 type Clip = {
   file: string;
@@ -23,6 +27,8 @@ export type RoutedIclFields = {
   ref_audio?: string;
   ref_text?: string;
   route: string;
+  referenceLanguage?: "English" | "Chinese" | "Japanese";
+  crossLanguageReference: boolean;
 };
 
 const ASSET_ROOT = resolve(import.meta.dir, "assets", "routed-icl");
@@ -53,12 +59,22 @@ export function isRoutedVoice(value: unknown): value is RoutedVoice {
 export async function buildRoutedIclFields(
   voice: RoutedVoice,
   emotion: SpeechEmotion,
+  outputLanguage?: SpeechLanguage,
+  allowCrossLanguageEmotion = false,
 ): Promise<RoutedIclFields> {
   const manifest = await loadManifest(voice);
-  const language = LANGUAGE_NAMES[manifest.language];
+  const nativeLanguage = LANGUAGE_NAMES[manifest.language];
+  const language = outputLanguage
+    ? SPEECH_LANGUAGE_NAMES[outputLanguage]
+    : nativeLanguage;
+  const crossLanguage = outputLanguage !== undefined && outputLanguage !== manifest.language;
   const clip = manifest.clips.find((candidate) => candidate.emotion === emotion);
 
-  if (emotion === "neutral" || !clip) {
+  if (
+    emotion === "neutral" ||
+    !clip ||
+    (crossLanguage && !allowCrossLanguageEmotion)
+  ) {
     return {
       language,
       speaker_embedding: await loadEmbedding(
@@ -66,6 +82,7 @@ export async function buildRoutedIclFields(
       ),
       x_vector_only_mode: true,
       route: "neutral",
+      crossLanguageReference: false,
     };
   }
 
@@ -78,6 +95,8 @@ export async function buildRoutedIclFields(
     ),
     x_vector_only_mode: false,
     route: clip.emotion,
+    referenceLanguage: nativeLanguage,
+    crossLanguageReference: crossLanguage,
   };
 }
 

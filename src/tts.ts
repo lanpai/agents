@@ -8,6 +8,8 @@ import { recordAgentCall } from "./calls";
 import type { Voice } from "./characters/types";
 import { getTtsServerUrl } from "./ttsSettings";
 import type { SpeechEmotion } from "./speechEmotion";
+import { getCrossLanguageEmotion, type SpeechLanguage } from "./speechLanguage";
+import { applyTtsPronunciationHints } from "./ttsPronunciation";
 
 const MAX_QUEUE = 8;
 const PHONEME_TIMEOUT_MS = 15000;
@@ -21,6 +23,7 @@ type Line = {
   voice: Voice;
   delivery?: string; // stage direction ("flat and cold", "almost a whisper")
   emotion: SpeechEmotion;
+  language: SpeechLanguage;
   volume: number;
   onStart?: () => void;
   onEnd?: () => void;
@@ -89,6 +92,7 @@ export function speak(
     voice: Voice;
     delivery?: string;
     emotion?: SpeechEmotion;
+    language: SpeechLanguage;
     volume?: number;
     onStart?: () => void;
     onEnd?: () => void;
@@ -97,7 +101,12 @@ export function speak(
   if (!unlocked || text.length === 0) return false;
   if (queued >= MAX_QUEUE) return false; // drop speech rather than building a backlog
   queued++;
-  queue.push({ text, volume: 0.8, emotion: "neutral", ...line });
+  queue.push({
+    text: applyTtsPronunciationHints(text, line.language),
+    volume: 0.8,
+    emotion: "neutral",
+    ...line,
+  });
   void pump();
   return true;
 }
@@ -181,6 +190,8 @@ async function playQwen(
         voice: line.voice.ttsVoice,
         routedVoice: line.voice.routedVoice,
         emotion: line.emotion,
+        language: line.language,
+        crossLanguageEmotion: getCrossLanguageEmotion(),
         serverUrl: getTtsServerUrl(),
       }),
     });
@@ -188,6 +199,9 @@ async function playQwen(
       throw new Error(`TTS API ${response.status}`);
     }
     const route = response.headers.get("x-tts-route");
+    const referenceLanguage = response.headers.get(
+      "x-tts-reference-language",
+    );
 
     audio.gain.gain.value = line.volume;
     const reader = response.body.getReader();
@@ -246,7 +260,7 @@ async function playQwen(
     if (nextStartAt === null) throw new Error("TTS API returned no PCM audio");
     record.status = "ok";
     record.result = [
-      `${line.voice.routedVoice ?? "default"}/${route ?? line.emotion}: ${receivedBytes} PCM bytes`,
+      `${line.voice.routedVoice ?? "default"}/${route ?? line.emotion} in ${line.language}${referenceLanguage ? ` using ${referenceLanguage} reference` : ""}: ${receivedBytes} PCM bytes`,
     ];
     await delay(
       Math.max(0, (nextStartAt - audio.context.currentTime) * 1000) + 20,
@@ -271,6 +285,8 @@ async function playFormant(
   audio: AudioOutput,
   onStart: () => void,
 ) {
+  if (line.language !== "en")
+    throw new Error("formant fallback only supports English");
   if (!audio.formantNode) throw new Error("formant worklet unavailable");
   const phonemes = await phonemize(line);
   const { schedule, totalMs } = compileString(phonemes, {

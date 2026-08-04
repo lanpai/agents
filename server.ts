@@ -5,6 +5,11 @@ import {
   SPEECH_EMOTIONS,
   type SpeechEmotion,
 } from "./src/speechEmotion";
+import {
+  isSpeechLanguage,
+  SPEECH_LANGUAGE_NAMES,
+  type SpeechLanguage,
+} from "./src/speechLanguage";
 
 // which model serves agent decisions; the frontend always speaks Anthropic
 // shapes — non-sonnet paths translate to/from OpenAI-compatible APIs
@@ -92,6 +97,8 @@ type TtsRequest = {
   serverUrl?: string;
   routedVoice?: string;
   emotion?: string;
+  language?: SpeechLanguage;
+  crossLanguageEmotion?: boolean;
 };
 
 const QWEN_TTS_URL = (Bun.env.QWEN_TTS_URL ?? "http://127.0.0.1:9001").replace(
@@ -222,7 +229,9 @@ async function callQwenTts(req: Request): Promise<Response> {
     model: await qwenModel(ttsUrl),
     input: body.text,
     task_type: "Base",
-    language: "English",
+    language: isSpeechLanguage(body.language)
+      ? SPEECH_LANGUAGE_NAMES[body.language]
+      : "English",
     stream: true,
     response_format: "pcm",
     max_new_tokens: 4096,
@@ -238,11 +247,21 @@ async function callQwenTts(req: Request): Promise<Response> {
         ? (body.emotion as SpeechEmotion)
         : "neutral";
     try {
-      const { route, ...fields } = await buildRoutedIclFields(
+      const {
+        route,
+        referenceLanguage,
+        crossLanguageReference,
+        ...fields
+      } = await buildRoutedIclFields(
         body.routedVoice,
         emotion,
+        isSpeechLanguage(body.language) ? body.language : "en",
+        body.crossLanguageEmotion === true,
       );
       routedRoute = route;
+      if (crossLanguageReference) {
+        payload.__crossLanguageReference = referenceLanguage;
+      }
       Object.assign(payload, fields);
     } catch (error) {
       return Response.json(
@@ -260,6 +279,8 @@ async function callQwenTts(req: Request): Promise<Response> {
         : QWEN_TTS_DEFAULT_VOICE;
   }
 
+  const crossLanguageReference = payload.__crossLanguageReference;
+  delete payload.__crossLanguageReference;
   let upstream: Response;
   try {
     upstream = await fetch(`${ttsUrl}/v1/audio/speech`, {
@@ -273,6 +294,32 @@ async function callQwenTts(req: Request): Promise<Response> {
       { error: `Qwen TTS unavailable: ${String(error)}` },
       { status: 502 },
     );
+  }
+
+  if (!upstream.ok) {
+    if (crossLanguageReference && isRoutedVoice(body.routedVoice)) {
+      try {
+        const { route, referenceLanguage: _reference, crossLanguageReference: _cross, ...safeFields } =
+          await buildRoutedIclFields(
+            body.routedVoice,
+            "neutral",
+            isSpeechLanguage(body.language) ? body.language : "en",
+            false,
+          );
+        routedRoute = route;
+        for (const key of ["ref_audio", "ref_text", "speaker_embedding", "x_vector_only_mode", "language"])
+          delete payload[key];
+        Object.assign(payload, safeFields);
+        upstream = await fetch(`${ttsUrl}/v1/audio/speech`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.any([req.signal, AbortSignal.timeout(120000)]),
+        });
+      } catch {
+        // Preserve the original upstream error handling below.
+      }
+    }
   }
 
   if (!upstream.ok) {
@@ -292,6 +339,10 @@ async function callQwenTts(req: Request): Promise<Response> {
         ? {
             "x-tts-voice": body.routedVoice,
             "x-tts-route": routedRoute ?? "neutral",
+            "x-tts-language": String(payload.language),
+            ...(crossLanguageReference && routedRoute !== "neutral"
+              ? { "x-tts-reference-language": String(crossLanguageReference) }
+              : {}),
           }
         : {}),
     },

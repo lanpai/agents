@@ -16,6 +16,7 @@ export const eric: Character = {
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "zh", known: ["zh", "ja", "en"] },
   initialMemory: "",
   describeHumanoid: () => "",
 };

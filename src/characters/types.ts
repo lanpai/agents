@@ -1,4 +1,5 @@
 import type { Humanoid } from "../humanoid";
+import type { SpeechLanguage } from "../speechLanguage";
 
 export type RoutedVoice =
   | "cory"
@@ -65,6 +66,10 @@ export type Character = {
   sprite: CharacterSprites;
   description: string;
   voice: Voice;
+  language: {
+    native: SpeechLanguage;
+    known: readonly SpeechLanguage[];
+  };
   initialMemory: string;
   describeHumanoid: (humanoid: Humanoid, viewer: Humanoid) => string;
 

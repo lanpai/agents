@@ -18,6 +18,7 @@ export const tyler: Character = {
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "en", known: ["en"] },
   initialMemory: "",
   describeHumanoid: () => "",
 

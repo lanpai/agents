@@ -59,6 +59,33 @@ language; an absent or invalid route safely becomes neutral.
 | Yanghua | Yanghua | Chinese |
 | YP | YP | English |
 
+The Tab sidebar has two spoken-language modes. `Presentation` asks every
+character to speak English. `Character languages` uses each character's native
+language and lets multilingual characters match the person they are replying
+to: Hirai speaks Japanese; Eric and Yanghua default to Chinese and also speak
+Japanese and English; Tiffany defaults to English and also speaks Japanese and
+Chinese. Everyone in the fictional simulation understands every language.
+
+Routed emotional ICL references are native-language assets. Non-native speech
+therefore uses the character's mean embedding and a neutral route by default.
+The sidebar's experimental cross-language emotion option reuses the native
+emotional reference while keeping Qwen's output language set to the language
+of the generated line; an upstream rejection is retried with the neutral mean
+embedding.
+
+Each `say` and `yell` decision includes a natural written line plus a bounded
+list of pronunciation substitutions in the same agent call. The runtime
+constructs the spoken line from the written line, accepting substitutions only
+for compact ambiguous tokens such as `5.0`, `SS+`, or `API`. It cannot add,
+remove, or paraphrase an ordinary clause. Speech bubbles, subtitles, and
+dialogue history retain the written forms; audio receives expansions such as
+`five point zero` and `S S plus`. Older free-form `spoken_message` values are
+ignored rather than risking a mismatch with the displayed line.
+
+English TTS also applies a final pronunciation lexicon after the model's
+spoken rendering. The name `Hirai` is currently sent to the synthesizer as
+`heRAI`; its written spelling remains unchanged everywhere in the UI.
+
 The routed assets can be regenerated with
 `scripts/import-routed-icl-assets.py`; the running app needs neither Python nor
 PyTorch because embeddings are checked in as JSON arrays.

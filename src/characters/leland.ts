@@ -20,6 +20,7 @@ export const leland: Character = {
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "en", known: ["en"] },
   initialMemory: "You stab everyone on sight.",
   describeHumanoid: () => "Leland has exceptionally cool style as usual.",
 

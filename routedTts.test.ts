@@ -35,4 +35,26 @@ describe("routed ICL assets", () => {
       }
     });
   }
+
+  test("cross-language emotion is neutral by default and optional", async () => {
+    const safe = await buildRoutedIclFields("eric", "terror", "ja", false);
+    expect(safe.language).toBe("Japanese");
+    expect(safe.route).toBe("neutral");
+    expect(safe.x_vector_only_mode).toBe(true);
+    expect(safe.crossLanguageReference).toBe(false);
+    expect(safe.ref_audio).toBeUndefined();
+
+    const experimental = await buildRoutedIclFields(
+      "eric",
+      "terror",
+      "ja",
+      true,
+    );
+    expect(experimental.language).toBe("Japanese");
+    expect(experimental.referenceLanguage).toBe("Chinese");
+    expect(experimental.route).toBe("terror");
+    expect(experimental.x_vector_only_mode).toBe(false);
+    expect(experimental.crossLanguageReference).toBe(true);
+    expect(experimental.ref_audio).toStartWith("data:audio/wav;base64,");
+  });
 });

@@ -8,6 +8,13 @@ import {
   setTtsServerUrl,
   TTS_SERVER_PRESETS,
 } from "./ttsSettings";
+import {
+  getCrossLanguageEmotion,
+  getSpeechMode,
+  setCrossLanguageEmotion,
+  setSpeechMode,
+  type SpeechMode,
+} from "./speechLanguage";
 
 const REFRESH_MS = 250;
 
@@ -66,6 +73,62 @@ export function initSidebar(options: {
   const buttons = document.createElement("div");
   buttons.append(pauseButton, clearButton);
 
+  const languageSettings = document.createElement("div");
+  Object.assign(languageSettings.style, { marginTop: "12px" });
+  const languageLabel = document.createElement("label");
+  languageLabel.textContent = "Spoken language mode";
+  languageLabel.htmlFor = "speech-language-mode";
+  const languageSelect = document.createElement("select");
+  languageSelect.id = "speech-language-mode";
+  Object.assign(languageSelect.style, {
+    boxSizing: "border-box",
+    display: "block",
+    marginTop: "4px",
+    padding: "5px",
+    width: "100%",
+  });
+  const languageOptions: { value: SpeechMode; label: string }[] = [
+    { value: "presentation", label: "Presentation — everyone speaks English" },
+    { value: "character", label: "Character languages — adaptive replies" },
+  ];
+  for (const entry of languageOptions) {
+    const option = document.createElement("option");
+    option.value = entry.value;
+    option.textContent = entry.label;
+    languageSelect.appendChild(option);
+  }
+  languageSelect.value = getSpeechMode();
+  languageSelect.addEventListener("change", () => {
+    setSpeechMode(languageSelect.value as SpeechMode);
+  });
+
+  const emotionLabel = document.createElement("label");
+  Object.assign(emotionLabel.style, {
+    display: "block",
+    marginTop: "8px",
+  });
+  const emotionCheckbox = document.createElement("input");
+  emotionCheckbox.type = "checkbox";
+  emotionCheckbox.checked = getCrossLanguageEmotion();
+  emotionCheckbox.addEventListener("change", () => {
+    setCrossLanguageEmotion(emotionCheckbox.checked);
+  });
+  emotionLabel.append(
+    emotionCheckbox,
+    document.createTextNode(
+      " Experimental emotion for non-native speech (falls back to neutral)",
+    ),
+  );
+  const languageStatus = document.createElement("div");
+  Object.assign(languageStatus.style, { marginTop: "3px", color: "#9ba4b4" });
+  languageStatus.textContent = "used for the next character decision / spoken line";
+  languageSettings.append(
+    languageLabel,
+    languageSelect,
+    emotionLabel,
+    languageStatus,
+  );
+
   const ttsSettings = document.createElement("div");
   Object.assign(ttsSettings.style, { marginTop: "12px" });
   const ttsLabel = document.createElement("label");
@@ -123,6 +186,7 @@ export function initSidebar(options: {
 
   sidebar.append(
     buttons,
+    languageSettings,
     ttsSettings,
     selectedHeader,
     selectedSection,

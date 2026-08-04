@@ -16,6 +16,7 @@ export const hirai: Character = {
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "ja", known: ["ja"] },
   initialMemory: "",
   describeHumanoid: () => "",
 };
