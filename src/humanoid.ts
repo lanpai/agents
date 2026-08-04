@@ -18,7 +18,7 @@ import {
   isCameraAutoFollowing,
 } from "./camera";
 import { queueBeat, speak } from "./tts";
-import { playCutscene, type Shot } from "./cutscene";
+import { isCutscenePlaying, playCutscene, type Shot } from "./cutscene";
 import { playSfx } from "./sfx";
 import { requestSubtitle } from "./subtitles";
 import {
@@ -41,7 +41,7 @@ import {
   type SpeechLanguage,
 } from "./speechLanguage";
 import { spriteFor, spriteReady } from "./sprites";
-import { feelSpeech, rollTemper } from "./anger";
+import { feelSpeech, nameColor, rollTemper } from "./anger";
 import type { Status } from "./statuses/types";
 
 export const UNITS_PER_FOOT = 10;
@@ -607,6 +607,9 @@ export class Humanoid {
   // real seconds spent carrying murderous intent without a body to show for it
   killerFor = 0;
   hasKilled = false;
+  // has swung the blade at someone, whether or not it has landed yet. From
+  // this moment the role is theirs for good — see driftAnger.
+  killCommitted = false;
   // how much of that anger each other person is responsible for, by name —
   // it's what picks the target once someone turns
   grudge = new Map<string, number>();
@@ -1079,6 +1082,11 @@ export class Humanoid {
       strike();
       return;
     }
+    // the swing is the point of no return, and it counts from here rather than
+    // from where the blow lands: the scene below waits its turn in the queue,
+    // and anything that could lift the intent during that wait would strip it
+    // off someone who is a fraction of a second from killing.
+    this.killCommitted = true;
     // the stab scene takes its turn in the same one-at-a-time queue as speech
     // and action bubbles, so it never opens over a line still playing in
     // another room; the fight's room stays frozen while it waits. A lethal
@@ -1216,7 +1224,14 @@ export class Humanoid {
       // don't stop on top of someone standing at the destination — settle on
       // an open spot nearby, re-checked each frame in case the spot gets
       // taken mid-walk (door waypoints are exempt: those are walked through)
-      if (this.pendingPath.length === 0) {
+      //
+      // A queued interaction is exempt too. Its destination is a thing on the
+      // floor, not a place to stand, and the act only fires within TOUCH_RANGE
+      // of it — while openSpotNear displaces by 20 units at the least, which is
+      // already the whole of that reach. Someone loitering by the knife would
+      // otherwise park the killer just outside it forever, with pendingUse
+      // still set, which is also what stops fetchTheKnife from ever retrying.
+      if (this.pendingPath.length === 0 && !this.pendingUse) {
         this.target = openSpotNear(this.target, this, world);
       }
       destination = { ...this.target, stopDistance: ARRIVE_DISTANCE };
@@ -1470,7 +1485,8 @@ export class Humanoid {
     ctx.fillStyle = PALETTE.nameText;
     if (this.thinking) {
       const dots = ".".repeat(1 + (Math.floor(now / 400) % 3));
-      ctx.fillText(dots, 0, 19);
+      // below the name label, which now owns the line just under the feet
+      ctx.fillText(dots, 0, 29);
     }
 
     ctx.restore();
@@ -1552,6 +1568,8 @@ export class Humanoid {
 
   // name label + speech bubble, drawn in world space so they scale with zoom
   drawOverlay(ctx: CanvasRenderingContext2D) {
+    this.drawNameLabel(ctx);
+
     ctx.save();
     ctx.translate(this.x, this.y - 8);
 
@@ -1574,6 +1592,34 @@ export class Humanoid {
       });
     }
 
+    ctx.restore();
+  }
+
+  // the name under each character's feet, coloured by how close they are to
+  // killing someone (see nameColor in src/anger.ts). Drawn in the overlay pass
+  // rather than the underlay so a character standing in front of another can't
+  // cover up whose label is orange.
+  private drawNameLabel(ctx: CanvasRenderingContext2D) {
+    // the opening credits name people themselves, in big type on a letterboxed
+    // shot. A second, smaller name stuck to their feet fights that composition
+    // — and an orange one would announce the temper of the room before the
+    // show has even started.
+    if (isCutscenePlaying()) return;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.textAlign = "center";
+    ctx.font = "700 8px sans-serif";
+    // a body's label stays up — it is how you tell who is on the floor — but
+    // dimmed, so the living read first
+    if (this.dead) ctx.globalAlpha *= 0.5;
+    // outlined the way the room labels are: white on a pale floor and orange on
+    // the kitchen tile both lose their edge without it
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = PALETTE.labelShadow;
+    ctx.strokeText(this.character.name, 0, 20);
+    ctx.fillStyle = nameColor(this);
+    ctx.fillText(this.character.name, 0, 20);
     ctx.restore();
   }
 

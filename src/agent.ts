@@ -113,7 +113,9 @@ export function scheduleThinking(humanoids: Humanoid[], now: number) {
     // never start a decision in a room where time is standing still — that
     // includes rooms frozen by a pick earlier in this same pass
     const room = roomOf(humanoid.x, humanoid.y);
-    if (frozen.has(room)) continue;
+    // the killer decides through anything: a roommate mid-line would otherwise
+    // hold the one character whose next move the whole run is waiting on
+    if (frozen.has(room) && !isKiller(humanoid)) continue;
     frozen.add(room);
     humanoid.thinking = true;
     inFlight++;

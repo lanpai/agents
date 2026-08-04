@@ -259,12 +259,19 @@ function draw(now: number) {
 // firing restarts the hop from the near side of the door. That is the pacing in
 // and out of a doorway: the order was being reissued faster than the walk to
 // the door could complete.
-const IDLE_BEFORE_FETCH_S = 1.2;
+//
+// It has to stay well under the gap the killer's own decisions leave. A
+// marching killer re-thinks about once a second (their status is an order they
+// keep acting on), and a decision holds `thinking` for as long as the API call
+// takes — so the quiet window between two of their turns is about a second. At
+// 1.2 the threshold was longer than the window it was waiting for and the walk
+// was never issued at all: the killer stood wherever they turned, forever.
+const IDLE_BEFORE_FETCH_S = 0.3;
 const FETCH_REISSUE_S = 5;
 let fetchIdle = 0;
 let fetchCooldown = 0;
 
-function fetchTheKnife(world: Humanoid[], frozen: Set<unknown>, dt: number) {
+function fetchTheKnife(world: Humanoid[], dt: number) {
   const killer = world.find(isKiller);
   // a killer mid-spree who has put the blade down goes back for it too
   if (
@@ -277,16 +284,24 @@ function fetchTheKnife(world: Humanoid[], frozen: Set<unknown>, dt: number) {
     return;
   }
   fetchCooldown = Math.max(0, fetchCooldown - dt);
-  // don't cut across an order they're already carrying out, a decision or line
-  // still in flight, or a room that is standing still around them
+  // don't cut across an order they're already carrying out, or a decision or
+  // line still in flight.
+  //
+  // Deliberately NOT gated on the room being frozen. A room freezes whenever
+  // anyone in it is thinking or has a line queued — and lines are queued
+  // building-wide and played one at a time, so an occupied room is frozen most
+  // of the time. Waiting for it to clear meant the order was never issued.
+  // Issuing it into a frozen room is harmless: the freeze already stops
+  // update() from moving anyone, so the walk simply starts when the room does.
   const busy =
     killer.thinking ||
     killer.speaking ||
     killer.action !== null ||
     killer.isMoving() ||
-    killer.pendingUse !== null ||
-    killer.pendingStrike !== null ||
-    frozen.has(roomOf(killer.x, killer.y));
+    killer.pendingUse !== null;
+  // a queued blow is deliberately not in that list: an unarmed killer chasing
+  // someone down to punch them is a killer who needs the knife back first, and
+  // both orders below drop the pursuit as they're issued
   if (busy) {
     fetchIdle = 0;
     return;
@@ -368,12 +383,19 @@ function step(wallNow: number) {
       const decisionBlocked = decisionBlockedRooms(humanoids);
       for (const humanoid of humanoids) {
         const room = roomOf(humanoid.x, humanoid.y);
-        if (decisionBlocked.has(room)) {
+        // The killer is never held by presentation. A room freezes while
+        // anyone in it is thinking or has a line queued — and lines queue
+        // building-wide and play one at a time, so a killer standing beside a
+        // talkative pair never gets a frame to walk in, and the run stalls
+        // with them rooted to the spot. Their plot outranks the shot; everyone
+        // else still holds, so the scene itself still reads as a held frame.
+        const exempt = isKiller(humanoid);
+        if (decisionBlocked.has(room) && !exempt) {
           // Stateful scenes still hold their personal decision schedules.
           humanoid.nextThinkAt += dt * 1000;
           humanoid.nextMemoryAt += dt * 1000;
         }
-        if (!frozen.has(room)) {
+        if (!frozen.has(room) || exempt) {
           humanoid.update(dt, now, humanoids);
         }
       }
@@ -381,7 +403,7 @@ function step(wallNow: number) {
       // sharing a spot — including people whose room is frozen, since that is
       // a correction of where they already are, not travel
       separateBodies(humanoids);
-      fetchTheKnife(humanoids, frozen, dt);
+      fetchTheKnife(humanoids, dt);
       scheduleThinking(humanoids, now);
       for (const humanoid of humanoids)
         maybeUpdateMemory(humanoid, now, humanoids);

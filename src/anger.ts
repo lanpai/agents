@@ -30,6 +30,37 @@ export const ANGER_TIERS = [
 
 export type AngerTier = (typeof ANGER_TIERS)[number];
 
+// what colour a character's name label is drawn in — the only thing the gauge
+// shows the audience directly. Three states, not a gradient: a subtle ramp
+// through four tiers is unreadable at sprite scale and across a stream, so the
+// label stays plain white until it means something.
+//   white  — an ordinary temper
+//   orange — at the line, or held just under it: any of these could be next
+//   red    — they have used the knife, and are working through everyone left
+export const NAME_COLORS = {
+  calm: "#ffffff",
+  murderous: "#ff8c2b",
+  spree: "#e8332a",
+} as const;
+
+// one below MURDEROUS_AT, which is exactly where BYSTANDER_CAP pins everyone
+// once someone has turned. Reading the label off MURDEROUS_AT itself would
+// make the killer the only orange name in the building — the tell the whole
+// run is built on not giving away. At 84 the room goes orange together and
+// the killer is hidden among them.
+const NAME_ALERT_AT = MURDEROUS_AT - 1;
+
+export function nameColor(humanoid: Humanoid): string {
+  if (humanoid.hasKilled) return NAME_COLORS.spree;
+  // isKiller as well as the raw value: a killer whose nerve is fraying drops
+  // under the line while still holding the intent, and going back to white
+  // there would tell the room they are safe when they are not
+  if (isKiller(humanoid) || humanoid.anger >= NAME_ALERT_AT) {
+    return NAME_COLORS.murderous;
+  }
+  return NAME_COLORS.calm;
+}
+
 // ---------------------------------------------------------------------------
 // balance
 //
@@ -124,12 +155,31 @@ export function killerIn(world: Humanoid[]): Humanoid | null {
 // that can create a killer.
 export function driftAnger(world: Humanoid[], dt: number) {
   let claimed = killerIn(world);
+  // Once someone has swung the blade the role is theirs permanently, and it
+  // has to be enforced rather than assumed. Nothing may replace a killer who
+  // has killed (see the guard further down), so an intent that lapses after
+  // that point ends the run outright: the knife goes back on the floor, only
+  // an intent-holder may lift it (Knife.canBeTakenBy), and no new intent is
+  // ever handed out. Re-asserting it here closes the window the queued stab
+  // scene opens, and repairs a run — or a save — where it already happened.
+  const committed = world.find(
+    (humanoid) => !humanoid.dead && (humanoid.hasKilled || humanoid.killCommitted),
+  );
+  if (committed && !isKiller(committed)) {
+    const restored = addStatusToHumanoid(committed, MurderousIntent);
+    restored.target = pickTarget(committed, world);
+    committed.killerFor = 0;
+    claimed = committed;
+    console.log(
+      `[anger] ${committed.character.name} has already killed — intent restored`,
+    );
+  }
   // the drift deliberately does not touch the killer: their gauge has to stay
   // free to fall, or losing their nerve could never happen
   // once blood is drawn there is no coming back from it: no grace timer, no
   // losing their nerve. They just need someone new to point at.
   if (claimed?.hasKilled) retarget(claimed, world);
-  if (claimed && !claimed.hasKilled) {
+  if (claimed && !claimed.hasKilled && !claimed.killCommitted) {
     claimed.killerFor += dt;
     if (
       claimed.dead ||
@@ -230,6 +280,9 @@ function retarget(killer: Humanoid, world: Humanoid[]) {
 // the intent lifts: they put the knife down wherever they are and drop back
 // down the queue, so the next boil is someone else's
 function standDown(humanoid: Humanoid, world: Humanoid[]) {
+  // belt and braces for the rule above: whatever calls this, someone who has
+  // swung the blade does not get to put it down and walk away
+  if (humanoid.hasKilled || humanoid.killCommitted) return;
   humanoid.statuses.delete("Murderous Intent");
   humanoid.killerFor = 0;
   humanoid.anger = SPENT_ANGER;

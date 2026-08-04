@@ -52,10 +52,33 @@ function getToolsFor(humanoid: Humanoid, world: Humanoid[]) {
   // seconds, and any one of them redirecting the march means the kitchen is
   // never reached. The walk is the sim's job now — theirs is what to do on
   // arrival.
-  const MARCHING_BLOCKS = new Set(["say", "yell", "walk_to", "run_to"]);
+  // find_path and stand_still go too, for the same reason as the walk tools.
+  // find_path is the only movement-shaped tool left once walking is gone, so a
+  // killer under orders to reach the kitchen calls it every turn — and it pulls
+  // their next decision in to one second, which keeps them thinking almost
+  // continuously and starves the sim's own walk of the idle moment it needs.
+  // stand_still simply cancels the march (and any queued pick-up with it).
+  const MARCHING_BLOCKS = new Set([
+    "say",
+    "yell",
+    "walk_to",
+    "run_to",
+    "find_path",
+    "stand_still",
+  ]);
+  // the blade never leaves a killer's hand by their own choice. Only the sim
+  // puts it down — when they lose their nerve, or when they die. Left in
+  // reach, the model does drop it (hiding the evidence, handing it over,
+  // acting normal after a kill), and every one of those ends the run: they
+  // stand there disarmed while the sim walks them back for it, and a killer
+  // who has already killed can never be replaced.
+  const disarmable =
+    !isKiller(humanoid) ||
+    !humanoid.carrying.some((item) => item.name === "Knife");
   const tools = BASIC_SIM_TOOLS.filter(
     (tool) =>
       !(marching && MARCHING_BLOCKS.has(tool.name)) &&
+      !(tool.name === "drop" && !disarmable) &&
       (tool.condition?.(humanoid, world) ?? true),
   );
 

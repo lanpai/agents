@@ -30,6 +30,7 @@ type SavedHumanoid = {
   angerFloor: number;
   temper: number;
   hasKilled: boolean;
+  killCommitted: boolean;
   // Maps don't survive JSON, so the grudge ledger is stored as name/value pairs
   grudge: [string, number][];
   dead: boolean;
@@ -141,6 +142,7 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     angerFloor: humanoid.angerFloor,
     temper: humanoid.temper,
     hasKilled: humanoid.hasKilled,
+    killCommitted: humanoid.killCommitted,
     grudge: [...humanoid.grudge.entries()],
     dead: humanoid.dead,
     facing: humanoid.facing,
@@ -214,6 +216,8 @@ function restore(entry: unknown): Humanoid | null {
     humanoid.angerFloor = clamp(saved.angerFloor);
   // a run that already had its murder must not start hunting for a new killer
   humanoid.hasKilled = saved.hasKilled === true;
+  // a save from before this flag existed: a body on the floor is proof enough
+  humanoid.killCommitted = saved.killCommitted === true || humanoid.hasKilled;
   // a re-rolled temper would reshuffle who is about to snap mid-run
   if (typeof saved.temper === "number" && saved.temper > 0)
     humanoid.temper = saved.temper;
