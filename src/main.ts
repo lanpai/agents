@@ -74,19 +74,22 @@ for (const [character, x, y] of SPAWNS) {
   }
 }
 
-// a fresh game deals the roles: one random killer with a random victim, and
-// an urgent one-on-one for everyone else — the whole office is trying to get
-// somebody alone, so a private invitation proves nothing. Saved games carry
-// their dealt roles in the persisted statuses instead.
+// a fresh game deals the roles: everyone needs an urgent one-on-one with
+// somebody — the whole office is trying to get someone alone, so a private
+// invitation proves nothing. The targets form one shuffled cycle, so nobody
+// is after themself and no two people are after the same person. Saved
+// games carry their dealt roles in the persisted statuses instead.
 function assignRoles(cast: Humanoid[]) {
-  const randomOther = (self: Humanoid) => {
-    const others = cast.filter((humanoid) => humanoid !== self);
-    return others[Math.floor(Math.random() * others.length)]!;
-  };
-  for (const humanoid of cast) {
-    addStatusToHumanoid(humanoid, UrgentMeeting).target =
-      randomOther(humanoid).character.name;
+  let shuffled = [...cast];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
   }
+  shuffled = shuffled.slice(0, 2);
+  shuffled.forEach((humanoid, i) => {
+    addStatusToHumanoid(humanoid, UrgentMeeting).target =
+      shuffled[(i + 1) % shuffled.length]!.character.name;
+  });
 }
 if (freshGame) assignRoles(humanoids);
 
