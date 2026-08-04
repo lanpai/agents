@@ -111,6 +111,28 @@ function doorOffset(
   return { x: door.x, y: door.y + Math.sign(center.y - door.y) * depth };
 }
 
+// every doorway center, computed once — collision switches off near these so
+// two humanoids meeting in a door squeeze past instead of deadlocking
+const DOOR_POINTS: { x: number; y: number }[] = [];
+for (const room of ROOMS) {
+  for (const name of room.doors) {
+    const other = roomByName(name);
+    if (!other) continue;
+    const door = doorBetween(room, other);
+    if (
+      !DOOR_POINTS.some((point) => point.x === door.x && point.y === door.y)
+    ) {
+      DOOR_POINTS.push(door);
+    }
+  }
+}
+
+export function nearDoor(x: number, y: number, radius: number): boolean {
+  return DOOR_POINTS.some(
+    (door) => Math.hypot(door.x - x, door.y - y) < radius,
+  );
+}
+
 // staging point in front of a door, inside the room being left — walking here
 // first lines the humanoid up so it never slides along the wall into the gap
 export function doorApproach(from: Room, to: Room): { x: number; y: number } {

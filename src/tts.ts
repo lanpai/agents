@@ -145,15 +145,17 @@ async function pump() {
   if (!item) return;
   playing = true;
 
-  // a bubble never opens ahead of what it's waiting on (its subtitle
-  // translation); the request has its own timeout, so this can't hang
-  if (item.waitFor) await item.waitFor.catch(() => {});
-
   if ("silentMs" in item) {
+    // a bubble never opens ahead of what it's waiting on (its subtitle
+    // translation); the request has its own timeout, so this can't hang
+    if (item.waitFor) await item.waitFor.catch(() => {});
     item.onStart?.();
     await delay(item.silentMs);
     item.onEnd?.();
   } else {
+    // spoken lines start synthesizing right away — playQwen/playFormant gate
+    // PLAYBACK on item.waitFor themselves, so the TTS request and the
+    // subtitle translation run in parallel instead of back to back
     let started = false;
     const startLine = () => {
       if (started) return;
@@ -169,6 +171,8 @@ async function pump() {
         await playFormant(item, audio, startLine);
       }
     } catch {
+      // unvoiced fallback: the timed bubble still waits for its subtitle
+      if (item.waitFor) await item.waitFor.catch(() => {});
       startLine();
       await delay(2000 + item.text.length * 60);
     }
@@ -210,6 +214,11 @@ async function playQwen(line: Line, audio: AudioOutput, onStart: () => void) {
     }
     const route = response.headers.get("x-tts-route");
     const referenceLanguage = response.headers.get("x-tts-reference-language");
+
+    // synthesis has been streaming server-side since the fetch went out;
+    // playback (and the bubble) still hold until the subtitle is ready, so
+    // voice and text land together. Backpressure parks the stream meanwhile.
+    if (line.waitFor) await line.waitFor.catch(() => {});
 
     audio.gain.gain.value = line.volume;
     const reader = response.body.getReader();
@@ -305,6 +314,9 @@ async function playFormant(
     ...line.voice,
     rate: clampRate(line.voice.rate),
   });
+  // transcription ran alongside the subtitle translation; hold playback
+  // until the subtitle is ready so voice and text land together
+  if (line.waitFor) await line.waitFor.catch(() => {});
   audio.gain.gain.value = line.volume;
   audio.formantNode.port.postMessage({ type: "schedule", schedule });
   onStart();

@@ -3,6 +3,7 @@ import {
   doorBetween,
   doorThrough,
   findPath,
+  nearDoor,
   roomByName,
   roomOf,
   ROOMS,
@@ -92,6 +93,10 @@ const SEPARATION_RESPONSE = 0.35;
 // before they touch instead of grinding through each other
 const AVOID_RADIUS = 26;
 const AVOID_STRENGTH = 1.1;
+// collision switches off this close to a doorway: two people meeting in the
+// gap squeeze past each other, where pushing apart would wedge both against
+// the walls and deadlock the door forever
+const DOOR_CLEARANCE = 34;
 const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
@@ -414,6 +419,13 @@ export function separateBodies(world: Humanoid[]) {
       // the dead have no collision at all: the living step over a body, so
       // a corpse dropped in a doorway can never wall the door off
       if (a.dead || b.dead || a.escaped || b.escaped) continue;
+      // doorways are collision-free too — see DOOR_CLEARANCE
+      if (
+        nearDoor(a.x, a.y, DOOR_CLEARANCE) ||
+        nearDoor(b.x, b.y, DOOR_CLEARANCE)
+      ) {
+        continue;
+      }
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       let distance = Math.hypot(dx, dy);
@@ -704,6 +716,9 @@ export class Humanoid {
     // on the last stride the destination wins: veering here would have them
     // circling the spot they came to stand on
     if (toDestination <= AVOID_RADIUS * 0.5) return;
+    // inside a doorway's clearance nobody steers — drive straight through the
+    // gap; veering around someone here wedges both against the walls
+    if (nearDoor(this.x, this.y, DOOR_CLEARANCE)) return;
     const headingX = this.vx / speed;
     const headingY = this.vy / speed;
     let steerX = 0;
@@ -712,6 +727,8 @@ export class Humanoid {
       if (other === this) continue;
       // the dead have no collision — walkers step over a body, not around it
       if (other.dead || other.escaped) continue;
+      // someone already in a doorway isn't an obstacle: they're mid-squeeze
+      if (nearDoor(other.x, other.y, DOOR_CLEARANCE)) continue;
       // the one they're closing on isn't an obstacle — it's the point. Veering
       // off them would have the follower orbit their heels, and the attacker
       // circle the person they mean to hit.
