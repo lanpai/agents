@@ -177,11 +177,7 @@ async function pump() {
   void pump();
 }
 
-async function playQwen(
-  line: Line,
-  audio: AudioOutput,
-  onStart: () => void,
-) {
+async function playQwen(line: Line, audio: AudioOutput, onStart: () => void) {
   const record = recordAgentCall({
     humanoid: line.speaker,
     kind: "tts",
@@ -210,9 +206,7 @@ async function playQwen(
       throw new Error(`TTS API ${response.status}`);
     }
     const route = response.headers.get("x-tts-route");
-    const referenceLanguage = response.headers.get(
-      "x-tts-reference-language",
-    );
+    const referenceLanguage = response.headers.get("x-tts-reference-language");
 
     audio.gain.gain.value = line.volume;
     const reader = response.body.getReader();
@@ -239,7 +233,11 @@ async function playQwen(
       if (bytes.length === 0) continue;
 
       const samples = new Float32Array(bytes.length / 2);
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const view = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      );
       for (let index = 0; index < samples.length; index++) {
         samples[index] = view.getInt16(index * 2, true) / 32768;
       }
@@ -325,6 +323,7 @@ Rules:
 - Words in the same clause run together with nothing between them — inserting breaks between ordinary words sounds broken and robotic.
 - Only where the written punctuation marks a real break, insert , ; or . as its own token (short, medium, long pause). Most lines need one or two at most, often none.
 - Transcribe how the line is naturally spoken aloud: expand numbers and abbreviations into words.
+- If the language is not in English, do your best guess estimate of the phonemes.
 
 A delivery direction may accompany the line. Shape it with these directives, each as its own token:
 - b+20 / b-15 bends the pitch up/down (Hz) from that point on; a bare b returns to the speaker's normal pitch.
