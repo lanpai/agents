@@ -1,4 +1,3 @@
-import { Knife } from "../interactables/knife";
 import { addStatusToHumanoid } from "../statuses";
 import { MurderousIntent } from "../statuses/murderousIntent";
 import { sheet, type Character } from "./types";
@@ -24,6 +23,5 @@ export const leland: Character = {
 
   onInit: (humanoid) => {
     addStatusToHumanoid(humanoid, MurderousIntent).target = "Cory";
-    humanoid.carrying.push(new Knife());
   },
 };
