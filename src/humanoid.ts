@@ -36,10 +36,7 @@ import type {
 } from "./characters/types";
 import { whitecatSprites } from "./characters/whitecat";
 import type { SpeechEmotion } from "./speechEmotion";
-import {
-  SPEECH_LANGUAGE_NAMES,
-  type SpeechLanguage,
-} from "./speechLanguage";
+import { SPEECH_LANGUAGE_NAMES, type SpeechLanguage } from "./speechLanguage";
 import { spriteFor, spriteReady } from "./sprites";
 import { feelSpeech, nameColor, rollTemper } from "./anger";
 import type { Status } from "./statuses/types";
@@ -359,7 +356,8 @@ function actionDuration(humanoid: Humanoid): number {
   // a swing that is being revealed holds its last pose — blade planted — until
   // whitecat has come and gone. The room is frozen for as long as a one-shot
   // runs, so this is also what keeps the reveal watched instead of glimpsed.
-  if (action.kind === "stab" && humanoid.reveal) return Math.max(base, REVEAL_MS);
+  if (action.kind === "stab" && humanoid.reveal)
+    return Math.max(base, REVEAL_MS);
   return base;
 }
 
@@ -1250,8 +1248,7 @@ export class Humanoid {
       null;
     if (this.followName) {
       const followed = world.find(
-        (other) =>
-          !other.escaped && other.character.name === this.followName,
+        (other) => !other.escaped && other.character.name === this.followName,
       );
       const myRoom = roomOf(this.x, this.y);
       const followedRoom = followed ? roomOf(followed.x, followed.y) : null;
@@ -1554,11 +1551,16 @@ export class Humanoid {
 
     ctx.textAlign = "center";
     ctx.font = "9px sans-serif";
-    ctx.fillStyle = PALETTE.nameText;
     if (this.thinking) {
       const dots = ".".repeat(1 + (Math.floor(now / 400) % 3));
       // below the name label, which now owns the line just under the feet
-      ctx.fillText(dots, 0, 29);
+
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = PALETTE.labelShadow;
+      ctx.strokeText(dots, 0, -25);
+      ctx.fillStyle = nameColor(this);
+      ctx.fillText(dots, 0, -25);
     }
 
     ctx.restore();
