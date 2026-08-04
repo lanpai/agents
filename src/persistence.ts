@@ -30,8 +30,9 @@ type SavedHumanoid = {
   facing: Facing; // kept so a corpse lies the way it fell
   running: boolean;
   // statuses rebuild from the registry by name; durationLeft carries the
-  // remaining time for timed statuses
-  statuses: { name: string; durationLeft: number | null }[];
+  // remaining time for timed statuses, target the victim/meeting partner of
+  // targeted ones — the dealt roles must survive a reload
+  statuses: { name: string; durationLeft: number | null; target?: string | null }[];
 };
 
 type SavedItem = {
@@ -134,11 +135,12 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     facing: humanoid.facing,
     running: humanoid.running,
     statuses: [...humanoid.statuses.values()].map((status) => {
-      const timed = status as { durationLeft?: number };
+      const state = status as { durationLeft?: number; target?: string };
       return {
         name: status.name,
         durationLeft:
-          typeof timed.durationLeft === "number" ? timed.durationLeft : null,
+          typeof state.durationLeft === "number" ? state.durationLeft : null,
+        target: typeof state.target === "string" ? state.target : null,
       };
     }),
   }));
@@ -226,6 +228,9 @@ function restore(entry: unknown): Humanoid | null {
       if (typeof entry.durationLeft === "number") {
         (status as { durationLeft?: number }).durationLeft =
           entry.durationLeft;
+      }
+      if (typeof entry.target === "string" && entry.target.length > 0) {
+        (status as { target?: string }).target = entry.target;
       }
       humanoid.statuses.set(status.name, status);
     }

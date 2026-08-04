@@ -1,5 +1,3 @@
-import { addStatusToHumanoid } from "../statuses";
-import { MurderousIntent } from "../statuses/murderousIntent";
 import { sheet, type Character } from "./types";
 
 export const leland: Character = {
@@ -22,8 +20,4 @@ export const leland: Character = {
   language: { native: "en", known: ["en"] },
   initialMemory: "",
   describeHumanoid: () => "Leland has exceptionally cool style as usual.",
-
-  onInit: (humanoid) => {
-    addStatusToHumanoid(humanoid, MurderousIntent).target = "Cory";
-  },
 };

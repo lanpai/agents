@@ -590,8 +590,8 @@ export class Humanoid {
   // until the camera has seen the act
   showEmote(text: string) {
     // the bubble displays *text*, and the subtitle keys on the display form;
-    // requesting at queue time gives the translation a head start
-    requestSubtitle(
+    // the beat waits on the translation so bubble and subtitle land together
+    const subtitled = requestSubtitle(
       this.character.name,
       roomOf(this.x, this.y).name,
       `*${text}*`,
@@ -599,6 +599,7 @@ export class Humanoid {
     // actions share the spoken-line queue: they hold the screen one at a
     // time, so an action in one room can't talk over dialogue in another
     const beat = queueBeat(EMOTE_MS_BASE + text.length * EMOTE_MS_PER_CHAR, {
+      waitFor: subtitled,
       onStart: () => {
         if (this.dead) return;
         this.emote = { text };
@@ -748,9 +749,9 @@ export class Humanoid {
     delivery?: string,
     emotion: SpeechEmotion = "neutral",
   ) {
-    // translation starts while the line waits in the TTS queue, so the
-    // subtitle is usually ready the moment the bubble appears
-    requestSubtitle(
+    // the line's slot in the queue waits on the translation, so the voice
+    // never starts before its subtitle is ready
+    const subtitled = requestSubtitle(
       this.character.name,
       roomOf(this.x, this.y).name,
       text,
@@ -764,6 +765,7 @@ export class Humanoid {
       delivery,
       emotion,
       language,
+      waitFor: subtitled,
       volume: verb === "yell" ? 1 : 0.7,
       onStart: () => {
         if (this.dead) return;
