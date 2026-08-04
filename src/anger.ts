@@ -14,7 +14,10 @@
 import type { Humanoid } from "./humanoid";
 import { roomOf } from "./locations";
 import { addStatusToHumanoid } from "./statuses";
-import { MurderousIntent } from "./statuses/murderousIntent";
+import {
+  KILLER_GRACE_S,
+  MurderousIntent,
+} from "./statuses/murderousIntent";
 
 export const ANGER_MAX = 100;
 export const MURDEROUS_AT = 85;
@@ -41,11 +44,9 @@ export type AngerTier = (typeof ANGER_TIERS)[number];
 // office stays perfectly civil — the drift alone reaches MURDEROUS_AT here, and
 // friction in the conversation only ever pulls it in earlier.
 //
-// It is set below the four minutes the murder is aimed at, because turning is
-// not killing: the new killer still has to reach the kitchen, pick the knife
-// up, find their target and close on them, which is several decisions' worth of
-// walking. That approach is the part LLM pacing owns and this constant doesn't.
-// If murders keep landing late, lower this; if they land early, raise it.
+// It is set above the two-minute murder deadline so a run has time to build
+// tension before someone turns. Once they do, the status prompt owns the much
+// faster escalation from pursuit to desperation.
 const MINUTES_TO_BOIL = 2.5;
 
 // ...for the hottest temper in the building. Everyone drifts at their own
@@ -67,7 +68,6 @@ export function rollTemper(): number {
 // Either way the intent lifts, the knife goes back on the floor, and the gauge
 // resets low enough that somebody else is next in line rather than them again.
 const NERVE_FAILS_UNDER = 70;
-const KILLER_GRACE_S = 240;
 const SPENT_ANGER = 25;
 // a killer cools far slower than they heat: at full rate a couple of pleasant
 // remarks unseat them within a minute, and the role churns from one character
