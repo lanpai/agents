@@ -29,6 +29,10 @@ export const PALETTE = {
   blood: "rgba(104, 10, 16, 0.88)",
   bloodSheen: "rgba(198, 36, 40, 0.45)",
   bloodSpatter: "rgba(126, 14, 20, 0.75)",
+  // the puff that covers a killer changing back out of whitecat: pale enough to
+  // carry against the dark floor, and a brighter core so it reads as a burst
+  smoke: "rgba(206, 214, 230, 0.55)",
+  smokeCore: "rgba(240, 245, 255, 0.75)",
   nameText: "#a9b2c2",
   itemText: "#e4dcc8",
   itemTextShadow: "rgba(0, 0, 0, 0.85)",

@@ -21,7 +21,12 @@ import { playCutscene, type Shot } from "./cutscene";
 import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
 import { PALETTE, silhouette, mulberry32, hashSeed } from "./theme";
-import type { Character, SpriteSheet } from "./characters/types";
+import type {
+  Character,
+  CharacterSprites,
+  SpriteSheet,
+} from "./characters/types";
+import { whitecatSprites } from "./characters/whitecat";
 import type { Status } from "./statuses/types";
 
 export const UNITS_PER_FOOT = 10;
@@ -191,6 +196,88 @@ function drawRimmedSprite(
   );
 }
 
+// ---------------------------------------------------------------------------
+// the whitecat reveal
+//
+// Whoever plants the knife, the audience is shown who is really holding it: the
+// killer flickers into whitecat, holds that shape through the kill, and gets
+// their own face back only once a puff of smoke has covered the change.
+//
+// The flicker is a hard swap, never a dissolve. A half-transparent second
+// figure laid over the first reads as a rendering fault; a clean cut to someone
+// else standing in the same spot reads as the reveal it is. And it has to
+// chatter long enough to be *read* — a single frame is a dropped frame.
+const REVEAL_FLICKER_MS = 1500; // whitecat comes and goes, faster and faster
+const REVEAL_HOLD_MS = 700; // the blow lands with whitecat standing there
+const REVEAL_FADE_MS = 300; // and dissolves back inside the smoke
+const REVEAL_MS = REVEAL_FLICKER_MS + REVEAL_HOLD_MS + REVEAL_FADE_MS;
+const SMOKE_AT_MS = REVEAL_FLICKER_MS + REVEAL_HOLD_MS; // puff, then the swap back
+const SMOKE_MS = 900;
+// how long the killer stays on screen after the reveal proper, so the smoke
+// gets to thin out rather than being cut off
+export const REVEAL_TOTAL_MS = SMOKE_AT_MS + SMOKE_MS;
+
+// [start, end] of every stretch where whitecat is the one on screen. Built once:
+// the blips lengthen and the gaps between them close, so the flicker accelerates
+// into the hold instead of stopping dead.
+const REVEAL_PULSES: [number, number][] = (() => {
+  const pulses: [number, number][] = [];
+  // a beat of the killer's own face first — there has to be something for the
+  // first swap to be a swap *from*
+  let at = 140;
+  while (at < REVEAL_FLICKER_MS) {
+    const u = at / REVEAL_FLICKER_MS;
+    const on = 70 + 210 * u; // 70ms glimpse -> 280ms, nearly a held shot
+    const off = 210 - 165 * u; // 210ms of the real face -> 45ms
+    pulses.push([at, Math.min(at + on, REVEAL_FLICKER_MS)]);
+    at += on + off;
+  }
+  return pulses;
+})();
+
+// how much of whitecat is showing t ms into a reveal: 1 is whitecat alone in
+// the killer's place, 0 is the killer as themself
+function revealAmount(t: number): number {
+  if (t < 0 || t >= REVEAL_MS) return 0;
+  if (t < REVEAL_FLICKER_MS) {
+    return REVEAL_PULSES.some(([from, to]) => t >= from && t < to) ? 1 : 0;
+  }
+  const held = t - REVEAL_FLICKER_MS;
+  if (held < REVEAL_HOLD_MS) return 1;
+  return 1 - (held - REVEAL_HOLD_MS) / REVEAL_FADE_MS;
+}
+
+// the puff the killer changes back inside of, drawn around the humanoid's own
+// origin. Its shape is seeded off the name so it doesn't crawl between frames.
+function drawSmoke(ctx: CanvasRenderingContext2D, t: number, seed: number) {
+  if (t < 0 || t >= SMOKE_MS) return;
+  const life = t / SMOKE_MS;
+  const random = mulberry32(seed);
+
+  ctx.save();
+  for (let i = 0; i < 11; i++) {
+    const angle = random() * Math.PI * 2;
+    const reach = 5 + random() * 11;
+    const rise = 8 + random() * 14;
+    const born = random() * 0.3; // puffs stagger out rather than blooming as one
+    const grown = (life - born) / (1 - born);
+    if (grown <= 0) continue;
+    const eased = 1 - Math.pow(1 - grown, 2); // bursts out, then drifts
+    ctx.globalAlpha = Math.min(1, (1 - grown) * 1.6);
+    ctx.beginPath();
+    ctx.arc(
+      Math.cos(angle) * reach * eased,
+      -10 + Math.sin(angle) * reach * 0.45 * eased - rise * eased,
+      3 + 7 * eased,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fillStyle = i % 3 === 0 ? PALETTE.smokeCore : PALETTE.smoke;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // remember() an event for every living humanoid in the source's room, except
 // the source themself; pass a function to vary the text per viewer
 export function broadcastToRoom(
@@ -236,8 +323,14 @@ const EMOTE_SEEN_DISTANCE = 40; // camera center this close = the actor is frame
 
 // how long a one-shot runs end to end
 function actionDuration(humanoid: Humanoid): number {
-  const sheet = humanoid.character.sprite[humanoid.action!.kind];
-  return sheet.frames * sheet.frameMs;
+  const action = humanoid.action!;
+  const sheet = humanoid.character.sprite[action.kind];
+  const base = sheet.frames * sheet.frameMs;
+  // a swing that is being revealed holds its last pose — blade planted — until
+  // whitecat has come and gone. The room is frozen for as long as a one-shot
+  // runs, so this is also what keeps the reveal watched instead of glimpsed.
+  if (action.kind === "stab" && humanoid.reveal) return Math.max(base, REVEAL_MS);
+  return base;
 }
 
 // one-shots tick on wall time: their own room is frozen while they play, so a
@@ -248,12 +341,26 @@ export function updateActions(world: Humanoid[], dt: number) {
     // the blood seeps on wall time too: the room a death happens in is frozen
     // for the reaction, and a sim clock would leave the floor clean through it
     if (humanoid.dead) humanoid.deadFor += dt;
+    // the reveal outlives the swing (the smoke thins out after the room has
+    // resumed), so it runs on its own clock rather than the action's
+    if (humanoid.reveal) {
+      humanoid.reveal.t += dt * 1000;
+      if (humanoid.reveal.t >= REVEAL_TOTAL_MS) humanoid.reveal = null;
+    }
     if (!humanoid.action) continue;
     humanoid.action.t += dt * 1000;
     if (humanoid.action.t >= actionDuration(humanoid) && !humanoid.dead) {
       humanoid.action = null;
     }
   }
+}
+
+// how long the room stays frozen and the camera stays tight for a stab: long
+// enough for the swing, and long enough for the reveal riding on it — right
+// through the puff of smoke that hands the killer their own face back
+function stabSceneMs(killer: Humanoid): number {
+  const stab = killer.character.sprite.stab;
+  return Math.max(stab.frames * stab.frameMs + 800, REVEAL_MS + 500);
 }
 
 // true when a point is inside some room's floor, rather than in a wall or
@@ -408,6 +515,8 @@ export class Humanoid {
   // under one. It runs on wall time (see updateActions) because the room it
   // happens in is frozen for exactly as long as it lasts.
   action: { kind: "stab" | "stabbed"; facing: Facing; t: number } | null = null;
+  // set while this humanoid is being shown as whitecat; see the reveal above
+  reveal: { t: number } | null = null;
 
   statuses = new Map<string, Status>();
 
@@ -764,6 +873,9 @@ export class Humanoid {
 
       // both fighters turn to face each other for the exchange. Punches have
       // no art of their own, so they borrow the blade's swing.
+      // only the blade earns the reveal — a punch borrows the animation, not
+      // the accusation. Set first: it is what lengthens the swing.
+      if (verb.present === "stabs") this.reveal = { t: 0 };
       this.playAction("stab", facingOf(target.x - this.x, target.y - this.y));
       target.facing = facingOf(this.x - target.x, this.y - target.y);
 
@@ -783,14 +895,13 @@ export class Humanoid {
       // under letterbox while the swing plays out. No fade from black — the
       // blow is the cut.
       if (verb.present === "stabs") {
-        const stab = this.character.sprite.stab;
         const shots: Shot[] = [
           {
             x: (this.x + target.x) / 2,
             y: (this.y + target.y) / 2 - 10,
             zoomFrom: 4.5,
             zoomTo: 6,
-            duration: (stab.frames * stab.frameMs + 800) / 1000,
+            duration: stabSceneMs(this) / 1000,
           },
         ];
         // if (target.dead) {
@@ -813,9 +924,7 @@ export class Humanoid {
     // the stab scene takes its turn in the same one-at-a-time queue as speech
     // and action bubbles, so it never opens over a line still playing in
     // another room; the fight's room stays frozen while it waits
-    const stab = this.character.sprite.stab;
-    const sceneMs = stab.frames * stab.frameMs + 800;
-    const queued = queueBeat(sceneMs, {
+    const queued = queueBeat(stabSceneMs(this), {
       onStart: strike,
       onEnd: () => {
         this.speaking = false;
@@ -1089,20 +1198,27 @@ export class Humanoid {
 
   // which sheet, row and column to show right now: a one-shot wins while it
   // plays, otherwise the walk loop — whose front row doubles as the idle
-  private pose(): { sheet: SpriteSheet; facing: Facing; frame: number } {
+  private pose(): {
+    kind: keyof CharacterSprites;
+    sheet: SpriteSheet;
+    facing: Facing;
+    frame: number;
+  } {
     if (this.action) {
-      const sheet = this.character.sprite[this.action.kind];
+      const kind = this.action.kind;
+      const sheet = this.character.sprite[kind];
       const frame = Math.min(
         Math.floor(this.action.t / sheet.frameMs),
         sheet.frames - 1, // the dead hold the last frame forever
       );
-      return { sheet, facing: this.action.facing, frame };
+      return { kind, sheet, facing: this.action.facing, frame };
     }
     const sheet = this.character.sprite.walk;
     // standing still means the front row, held on its first pose — but only
     // after a real stop: waypoint handoffs idle for one frame mid-walk
     const walking = this.isMoving() || this.stillFor < IDLE_GRACE_S;
     return {
+      kind: "walk",
       sheet,
       facing: walking ? this.facing : "front",
       frame: walking
@@ -1112,14 +1228,17 @@ export class Humanoid {
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    const { sheet, facing, frame } = this.pose();
+    const { kind, sheet, facing, frame } = this.pose();
     const sprite = spriteFor(sheet.src);
     if (!sprite.complete || sprite.naturalWidth === 0) return;
     // nearest-neighbour picks different source pixels every frame while the
     // sprite is being minified, which reads as shimmer on fine detail — so
     // filter when shrinking the cell and stay crisp once it's blown up
-    ctx.imageSmoothingEnabled = sheet.size * camera.zoom < sheet.cell;
-    ctx.imageSmoothingQuality = "high";
+    const smoothFor = (s: SpriteSheet) => {
+      ctx.imageSmoothingEnabled = s.size * camera.zoom < s.cell;
+      ctx.imageSmoothingQuality = "high";
+    };
+    smoothFor(sheet);
     // snap to whole screen pixels, not whole world units: at high zoom one world
     // unit is several pixels, so rounding in world space makes walking judder
     const snap = (value: number) =>
@@ -1129,7 +1248,32 @@ export class Humanoid {
     ctx.save();
     ctx.translate(snap(this.x), snap(this.y - arc * HOP_HEIGHT));
     if (!this.dead) ctx.rotate(arc * this.hopTilt);
-    drawRimmedSprite(ctx, sheet, sprite, facing, frame);
+
+    // whitecat stands in the killer's place for as much of the reveal as is
+    // showing — at 1 it replaces them outright, so their own silhouette can't
+    // peek out from behind a smaller cat
+    const showing = this.reveal ? revealAmount(this.reveal.t) : 0;
+    const cat = showing > 0 ? whitecatSprites[kind] : null;
+    const catSprite = cat ? spriteFor(cat.src) : null;
+    const catReady = !!catSprite?.complete && catSprite.naturalWidth > 0;
+    if (showing < 1 || !catReady) {
+      drawRimmedSprite(ctx, sheet, sprite, facing, frame);
+    }
+    if (cat && catReady) {
+      ctx.save();
+      ctx.globalAlpha *= showing;
+      smoothFor(cat);
+      drawRimmedSprite(ctx, cat, catSprite!, facing, frame);
+      ctx.restore();
+      smoothFor(sheet);
+    }
+    if (this.reveal) {
+      drawSmoke(
+        ctx,
+        this.reveal.t - SMOKE_AT_MS,
+        hashSeed(this.character.name),
+      );
+    }
     ctx.restore();
   }
 
