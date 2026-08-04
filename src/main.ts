@@ -9,6 +9,7 @@ import {
   type Shot,
 } from "./cutscene";
 import {
+  decisionBlockedRooms,
   frozenRooms,
   Humanoid,
   separateBodies,
@@ -361,15 +362,19 @@ function step(wallNow: number) {
       // so do one-shot animations — the room they happen in is frozen for
       // exactly as long as they run, so a sim clock would deadlock them
       updateActions(humanoids, dt);
-      // time stands still only in rooms with a thinking, speaking, or
-      // freshly-emoting humanoid; everyone elsewhere carries on as normal
+      // Presentation stands still in rooms with a thinking, speaking, or
+      // freshly-emoting humanoid. TTS alone does not hold decision clocks:
+      // model calls and tool commands continue behind the audience-facing shot.
       const frozen = frozenRooms(humanoids);
+      const decisionBlocked = decisionBlockedRooms(humanoids);
       for (const humanoid of humanoids) {
-        if (frozen.has(roomOf(humanoid.x, humanoid.y))) {
-          // hold their personal schedule in place while their room is frozen
+        const room = roomOf(humanoid.x, humanoid.y);
+        if (decisionBlocked.has(room)) {
+          // Stateful scenes still hold their personal decision schedules.
           humanoid.nextThinkAt += dt * 1000;
           humanoid.nextMemoryAt += dt * 1000;
-        } else {
+        }
+        if (!frozen.has(room)) {
           humanoid.update(dt, now, humanoids);
         }
       }

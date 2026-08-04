@@ -2,7 +2,12 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { simNow } from "./time";
 import { isKiller } from "./anger";
 import { recordAgentCall } from "./calls";
-import { BODY_PARTS, formatFeet, frozenRooms, type Humanoid } from "./humanoid";
+import {
+  BODY_PARTS,
+  decisionBlockedRooms,
+  formatFeet,
+  type Humanoid,
+} from "./humanoid";
 import {
   describeItemInInventory,
   describeInteractableOnGround,
@@ -96,7 +101,7 @@ export function isThinking(): boolean {
 // oldest-due first so humanoids late in the array can't be starved of slots
 export function scheduleThinking(humanoids: Humanoid[], now: number) {
   if (inFlight >= MAX_CONCURRENT) return;
-  const frozen = frozenRooms(humanoids);
+  const frozen = decisionBlockedRooms(humanoids);
   const due = humanoids
     .filter(
       (humanoid) =>
@@ -302,11 +307,11 @@ function speechLanguagePrompt(humanoid: Humanoid): string {
     return "Presentation language mode is active. Speak every line in English and set language to en, even if English is not normally one of your languages.";
   }
   const { native, known } = humanoid.character.language;
-  return `Character language mode is active. You natively speak ${SPEECH_LANGUAGE_NAMES[native]} and can speak and understand ${known.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}.
+  return `Character language mode is active. Everyone automatically understands every language perfectly. Never claim that you cannot understand someone because of the language they used. You natively speak ${SPEECH_LANGUAGE_NAMES[native]} and can personally speak ${known.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}.
 - When directly replying to someone, use the language they most recently used if you can speak it.
 - When talking to yourself, address myself and always use your native language, even if others are nearby.
 - Otherwise use your native language when alone or beginning a conversation only when the tool offers it for that audience.
-- The say/yell tool offers only languages understood by everyone currently in earshot. Chinese is available only when every listener understands Chinese. If no shared language exists, you continue in your native language and some listeners may not understand.
+- The say/yell tool offers shared conversational languages based on what everyone in earshot can speak, not what they understand. Chinese is available only when every listener can also speak Chinese. If no shared spoken language exists, you continue in your native language; everyone still understands you perfectly.
 - Always set the say/yell language field to the language the message is actually written in.`;
 }
 
@@ -390,14 +395,8 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
               ? "moving"
               : "standing still"
       } in the room with you, ${formatFeet(distance)} away`;
-      if (other.speech) {
-        const understands =
-          getSpeechMode() === "presentation" ||
-          humanoid.character.language.known.includes(other.speech.language);
-        entry += understands
-          ? `, saying in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}${other.speech.addressing === "everyone in the room" ? "" : ` to ${other.speech.addressing}`}: "${other.speech.text}"`
-          : `, speaking in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}, which you do not understand`;
-      }
+      if (other.speech)
+        entry += `, saying in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}${other.speech.addressing === "everyone in the room" ? "" : ` to ${other.speech.addressing}`}: "${other.speech.text}"`;
       if (!other.dead && followingMe)
         entry +=
           ". They will come along wherever you go — to travel together, simply lead the way";

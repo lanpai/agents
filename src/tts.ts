@@ -6,7 +6,7 @@ import { compileString, PHONEME_KEYS } from "klattsch";
 import workletUrl from "klattsch/formant-worklet.js?url";
 import { recordAgentCall } from "./calls";
 import type { Voice } from "./characters/types";
-import { getTtsServerUrl } from "./ttsSettings";
+import { getTtsEnabled, getTtsServerUrl } from "./ttsSettings";
 import type { SpeechEmotion } from "./speechEmotion";
 import { getCrossLanguageEmotion, type SpeechLanguage } from "./speechLanguage";
 import { applyTtsPronunciationHints } from "./ttsPronunciation";
@@ -101,6 +101,9 @@ export function speak(
     onEnd?: () => void;
   },
 ): boolean {
+  // Dev mode can bypass generation and the serialized audio queue entirely.
+  // The caller still shows a timed bubble, but its room is not held frozen.
+  if (!getTtsEnabled()) return false;
   if (!unlocked || text.length === 0) return false;
   if (queued >= MAX_QUEUE) return false; // drop speech rather than building a backlog
   queued++;
