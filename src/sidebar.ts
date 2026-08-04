@@ -5,6 +5,7 @@ import { roomOf } from "./locations";
 import { selected } from "./selection";
 import {
   getTtsServerUrl,
+  initializeTtsServerUrl,
   setTtsServerUrl,
   TTS_SERVER_PRESETS,
 } from "./ttsSettings";
@@ -156,7 +157,7 @@ export function initSidebar(options: {
   }
   const ttsStatus = document.createElement("div");
   Object.assign(ttsStatus.style, { minHeight: "16px", marginTop: "3px" });
-  ttsStatus.textContent = "used for the next spoken line";
+  ttsStatus.textContent = "checking routed TTS connection…";
   const saveTtsUrl = () => {
     try {
       ttsInput.value = setTtsServerUrl(ttsInput.value);
@@ -175,6 +176,18 @@ export function initSidebar(options: {
     ttsInput.blur();
   });
   ttsSettings.append(ttsLabel, ttsInput, ttsPresets, ttsStatus);
+  void initializeTtsServerUrl().then((selection) => {
+    ttsInput.value = selection.url;
+    const labels = {
+      local: "connected to local routed TTS",
+      tailscale: "connected to routed TTS over Tailscale",
+      legacy: "routed TTS unavailable — using legacy TTS",
+      manual: "manual TTS URL selected",
+    } as const;
+    ttsStatus.textContent = labels[selection.source];
+    ttsStatus.style.color =
+      selection.source === "legacy" ? "#9a6410" : "#176b2c";
+  });
 
   const selectedHeader = document.createElement("h3");
   selectedHeader.textContent = "selected";

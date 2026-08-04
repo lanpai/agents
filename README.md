@@ -36,9 +36,13 @@ For a non-routed character, `voice.speakerEmbedding` can hold a model-compatible
 1024- or 2048-element vector. Otherwise it uses `voice.ttsVoice`, then the
 default voice above. Routed characters use the portable pack described below.
 
-Press Tab in the UI to select the routed-compatible 8092 default, the
-9001/8094 presets, or enter another local
-server URL. The choice is saved per browser and applies to the next line.
+At UI startup the backend probes routed TTS in order: local
+`http://127.0.0.1:8092`, then
+`http://tinybox.alpaca-elnath.ts.net:8092`. If neither model endpoint responds,
+the UI selects the legacy server at `http://127.0.0.1:9001`; if that request
+later fails, the browser formant voice remains the final fallback. Press Tab
+to see the selected endpoint and connection state, or enter another URL. A
+manual edit overrides an in-flight startup probe and applies to the next line.
 
 ### Routed character voices
 
