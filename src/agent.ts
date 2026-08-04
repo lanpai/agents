@@ -13,10 +13,7 @@ import {
   describeInteractableOnGround,
 } from "./interactables";
 import { ROOMS, roomOf } from "./locations";
-import {
-  getSpeechMode,
-  SPEECH_LANGUAGE_NAMES,
-} from "./speechLanguage";
+import { getSpeechMode, SPEECH_LANGUAGE_NAMES } from "./speechLanguage";
 import { buildTools, executeTool } from "./tools";
 
 // decisions are serialized per room (a thinking humanoid freezes its room, so
@@ -105,7 +102,10 @@ export function scheduleThinking(humanoids: Humanoid[], now: number) {
   const due = humanoids
     .filter(
       (humanoid) =>
-        !humanoid.dead && !humanoid.thinking && now >= humanoid.nextThinkAt,
+        !humanoid.dead &&
+        !humanoid.escaped &&
+        !humanoid.thinking &&
+        now >= humanoid.nextThinkAt,
     )
     .sort((a, b) => a.nextThinkAt - b.nextThinkAt);
   for (const humanoid of due) {
@@ -137,6 +137,7 @@ export function maybeUpdateMemory(
 ) {
   if (
     humanoid.dead ||
+    humanoid.escaped ||
     humanoid.consolidating ||
     memoryInFlight >= MAX_MEMORY_CONCURRENT ||
     now < humanoid.nextMemoryAt ||
@@ -249,7 +250,7 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
       .map((block) => `${block.name}(${JSON.stringify(block.input)})`);
     record.status = "ok";
 
-    if (humanoid.dead) return; // killed while the request was in flight
+    if (humanoid.dead || humanoid.escaped) return;
     // set the cadence before executing: tools may pull nextThinkAt closer
     // (e.g. find_path schedules an immediate follow-up), which must survive
     const hunting = isKiller(humanoid);
@@ -376,7 +377,10 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   }
 
   const visible = world.filter(
-    (other) => other !== humanoid && roomOf(other.x, other.y) === room,
+    (other) =>
+      other !== humanoid &&
+      !other.escaped &&
+      roomOf(other.x, other.y) === room,
   );
   if (visible.length === 0) {
     lines.push("", "You see no one else in the room.");
@@ -416,7 +420,7 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
   // this, whoever arrives first sees an empty room and doubles back to look
   // for the very person who is seconds behind them
   for (const other of world) {
-    if (other === humanoid || other.dead) continue;
+    if (other === humanoid || other.dead || other.escaped) continue;
     const otherRoom = roomOf(other.x, other.y);
     if (otherRoom === room || !room.doors.includes(otherRoom.name)) continue;
     if (other.followName === humanoid.character.name) {
@@ -434,7 +438,7 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
     if (roomOf(end.x, end.y) === room) {
       lines.push(
         "",
-        `${other.character.name} is about to enter the room from ${otherRoom.promptName}.`,
+        `${other.character.name} is about to enter the room from ${otherRoom.promptName} though they can't hear anything you say yet.`,
       );
     }
   }

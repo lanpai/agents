@@ -8,6 +8,7 @@ import { Interactable } from "./types";
 
 export class DDR extends Interactable {
   name = "DDR";
+  override onGroundArt = { src: "/arcade/ddr.png", width: 24 };
   onGroundDescription = "You see a Dance Dance Revolution cabinet.";
 
   override distraction = true;

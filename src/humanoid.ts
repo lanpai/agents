@@ -43,6 +43,7 @@ import {
 import { spriteFor, spriteReady } from "./sprites";
 import { feelSpeech, nameColor, rollTemper } from "./anger";
 import type { Status } from "./statuses/types";
+import { activateEscapeRoute } from "./escapeRoute";
 
 export const UNITS_PER_FOOT = 10;
 
@@ -292,9 +293,10 @@ export function broadcastToRoom(
   world: Humanoid[],
   event: string | ((viewer: Humanoid) => string),
 ) {
+  if (source.escaped) return;
   const room = roomOf(source.x, source.y);
   for (const other of world) {
-    if (other === source || other.dead) continue;
+    if (other === source || other.dead || other.escaped) continue;
     if (roomOf(other.x, other.y) !== room) continue;
     other.remember(typeof event === "function" ? event(other) : event);
   }
@@ -307,6 +309,7 @@ export function broadcastToRoom(
 export function frozenRooms(world: Humanoid[]) {
   const rooms = new Set<ReturnType<typeof roomOf>>();
   for (const humanoid of world) {
+    if (humanoid.escaped) continue;
     if (humanoid.dead && !isPlayingAction(humanoid)) continue;
     if (
       humanoid.thinking ||
@@ -326,6 +329,7 @@ export function frozenRooms(world: Humanoid[]) {
 export function decisionBlockedRooms(world: Humanoid[]) {
   const rooms = new Set<ReturnType<typeof roomOf>>();
   for (const humanoid of world) {
+    if (humanoid.escaped) continue;
     if (humanoid.dead && !isPlayingAction(humanoid)) continue;
     if (
       humanoid.thinking ||
@@ -364,6 +368,7 @@ function actionDuration(humanoid: Humanoid): number {
 // dead keep their last frame — that collapsed body *is* the corpse.
 export function updateActions(world: Humanoid[], dt: number) {
   for (const humanoid of world) {
+    if (humanoid.escaped) continue;
     // the blood seeps on wall time too: the room a death happens in is frozen
     // for the reaction, and a sim clock would leave the floor clean through it
     if (humanoid.dead) humanoid.deadFor += dt;
@@ -413,7 +418,7 @@ export function separateBodies(world: Humanoid[]) {
       const b = world[j]!;
       // the dead have no collision at all: the living step over a body, so
       // a corpse dropped in a doorway can never wall the door off
-      if (a.dead || b.dead) continue;
+      if (a.dead || b.dead || a.escaped || b.escaped) continue;
       // doorways are collision-free too — see DOOR_CLEARANCE
       if (
         nearDoor(a.x, a.y, DOOR_CLEARANCE) ||
@@ -461,6 +466,7 @@ export function isPlayingAction(humanoid: Humanoid): boolean {
 
 export function updateEmoteHolds(world: Humanoid[], dt: number) {
   for (const humanoid of world) {
+    if (humanoid.escaped) continue;
     const hold = humanoid.emoteHold;
     if (!hold) continue;
     hold.heldFor += dt;
@@ -510,6 +516,7 @@ function openSpotNear(
     world.some(
       (other) =>
         other !== self &&
+        !other.escaped &&
         !other.isMoving() &&
         Math.hypot(other.x - x, other.y - y) < PERSONAL_SPACE,
     );
@@ -564,6 +571,7 @@ export class Humanoid {
   };
   stamina = 100;
   dead = false;
+  escaped = false;
   deadFor = 0; // seconds since dying — drives how far the blood has spread
   running = false;
   carrying: Item[] = [];
@@ -674,7 +682,7 @@ export class Humanoid {
     const beat = queueBeat(EMOTE_MS_BASE + text.length * EMOTE_MS_PER_CHAR, {
       waitFor: subtitled,
       onStart: () => {
-        if (this.dead) return;
+        if (this.dead || this.escaped) return;
         this.emote = { text };
         // an action is a shot of its own: cut to it like a spoken line
         focusCameraOnSpeaker(this);
@@ -721,7 +729,7 @@ export class Humanoid {
     for (const other of world) {
       if (other === this) continue;
       // the dead have no collision — walkers step over a body, not around it
-      if (other.dead) continue;
+      if (other.dead || other.escaped) continue;
       // someone already in a doorway isn't an obstacle: they're mid-squeeze
       if (nearDoor(other.x, other.y, DOOR_CLEARANCE)) continue;
       // the one they're closing on isn't an obstacle — it's the point. Veering
@@ -764,6 +772,7 @@ export class Humanoid {
     emotion: SpeechEmotion = "neutral",
     hostility?: string, // how the line was meant; feeds the anger gauge
   ) {
+    if (this.escaped) return;
     // trim quotes if fully wrapped (avoids trimming text that starts of ends with quoted text)
     if (text.startsWith('"') && text.endsWith('"'))
       text = text.substring(1, text.length - 1);
@@ -801,7 +810,7 @@ export class Humanoid {
       .catch(() => text)
       .then((warped) => {
         this.releasePresentation(true);
-        if (this.dead) return;
+        if (this.dead || this.escaped) return;
         this.deliverLine(
           warped,
           warped === text ? spokenText : warped,
@@ -850,7 +859,7 @@ export class Humanoid {
       waitFor: subtitled,
       volume: verb === "yell" ? 1 : 0.7,
       onStart: () => {
-        if (this.dead) return;
+        if (this.dead || this.escaped) return;
         this.speech = {
           text,
           until: Number.POSITIVE_INFINITY,
@@ -889,7 +898,7 @@ export class Humanoid {
     const myRoom = roomOf(this.x, this.y);
     const heardBy: Humanoid[] = [];
     for (const other of world) {
-      if (other === this || other.dead) continue;
+      if (other === this || other.dead || other.escaped) continue;
       const otherRoom = roomOf(other.x, other.y);
       const sameRoom = otherRoom === myRoom;
       const adjacent = myRoom.doors.includes(otherRoom.name);
@@ -905,7 +914,7 @@ export class Humanoid {
         hearWarp(text, this.character.name)
           .catch(() => text)
           .then((heard) => {
-            if (!other.dead) other.remember(compose(heard));
+            if (!other.dead && !other.escaped) other.remember(compose(heard));
           });
       } else {
         other.remember(compose(text));
@@ -981,6 +990,7 @@ export class Humanoid {
   }
 
   remember(event: string) {
+    if (this.escaped) return;
     this.memory.push(event);
     if (this.memory.length > MEMORY_LIMIT) this.memory.shift();
     this.unconsolidated.push(event);
@@ -998,10 +1008,11 @@ export class Humanoid {
     verb: StrikeVerb,
     world: Humanoid[],
     now: number,
+    immediate = false,
   ) {
     const strike = () => {
-      if (this.dead) return; // struck down while waiting for the slot
-      if (target.dead) {
+      if (this.dead || this.escaped) return;
+      if (target.dead || target.escaped) {
         this.remember(
           `You went to ${verb.present.replace(/e?s$/, "")} ${target.character.name}, but they are already dead.`,
         );
@@ -1010,7 +1021,13 @@ export class Humanoid {
       const at = simNow();
       const room = roomOf(target.x, target.y);
       for (const witness of world) {
-        if (witness === this || witness === target || witness.dead) continue;
+        if (
+          witness === this ||
+          witness === target ||
+          witness.dead ||
+          witness.escaped
+        )
+          continue;
         if (roomOf(witness.x, witness.y) !== room) continue;
         witness.remember(
           `You saw ${this.character.name} ${verb.past} ${target.character.name}'s ${part}!`,
@@ -1026,7 +1043,7 @@ export class Humanoid {
       this.playAction("stab", facingOf(target.x - this.x, target.y - this.y));
       target.facing = facingOf(this.x - target.x, this.y - target.y);
 
-      target.takeDamage(part, damage, world, at);
+      target.takeDamage(part, damage, world, at, this);
       // the intent is spent the moment it lands: no grace timer to run out, and
       // nobody else takes the role afterwards
       if (target.dead) this.hasKilled = true;
@@ -1078,7 +1095,7 @@ export class Humanoid {
       }
     };
 
-    if (verb.present !== "stabs") {
+    if (verb.present !== "stabs" || immediate) {
       strike();
       return;
     }
@@ -1108,11 +1125,17 @@ export class Humanoid {
     this.holdPresentation(true);
   }
 
-  takeDamage(part: BodyPart, amount: number, world: Humanoid[], now: number) {
-    if (this.dead) return;
+  takeDamage(
+    part: BodyPart,
+    amount: number,
+    world: Humanoid[],
+    now: number,
+    attacker?: Humanoid,
+  ) {
+    if (this.dead || this.escaped) return;
     this.body[part] = Math.max(0, this.body[part] - amount);
     if ((part === "head" || part === "torso") && this.body[part] <= 0) {
-      this.die(world, now);
+      this.die(world, now, attacker);
     }
   }
 
@@ -1121,9 +1144,19 @@ export class Humanoid {
     this.action = { kind, facing, t: 0 };
   }
 
-  die(world: Humanoid[], now: number) {
-    if (this.dead) return;
+  die(world: Humanoid[], now: number, killer?: Humanoid) {
+    if (this.dead || this.escaped) return;
     this.dead = true;
+    // One-on-one meetings are opening-act cover traffic. Once the first body
+    // drops, nobody should keep following that artificial social objective.
+    for (const humanoid of world) {
+      humanoid.statuses.delete("Urgent Meeting");
+    }
+    // The first death triggers a building-wide scream and unlocks one
+    // persistent, randomly selected exterior exit. Survivors outside this room
+    // learn only that something is wrong and where the route appeared; direct
+    // witnesses retain the concrete strike and collapse events recorded here.
+    activateEscapeRoute(world, killer);
     // any death closes audience voting; the killer-reveal shots are folded
     // into the stab cutscene itself, over in landStrike. This fallback names
     // whoever has a kill on their hands, and this humanoid as the victim.
@@ -1153,7 +1186,7 @@ export class Humanoid {
     }
     this.carrying = [];
     for (const other of world) {
-      if (other === this || other.dead) continue;
+      if (other === this || other.dead || other.escaped) continue;
       if (roomOf(other.x, other.y) === myRoom) {
         other.remember(`You saw ${this.character.name} collapse and die.`);
         other.nextThinkAt = Math.min(other.nextThinkAt, now + 500);
@@ -1161,7 +1194,43 @@ export class Humanoid {
     }
   }
 
+  escape(world: Humanoid[], routeLabel: string) {
+    if (this.dead || this.escaped) return;
+    const room = roomOf(this.x, this.y);
+    this.remember(`You escaped the building through the ${routeLabel}.`);
+    for (const other of world) {
+      if (other === this || other.dead || other.escaped) continue;
+      const meeting = other.statuses.get("Urgent Meeting") as
+        | { target?: string }
+        | undefined;
+      if (meeting?.target === this.character.name) {
+        other.statuses.delete("Urgent Meeting");
+      }
+      if (roomOf(other.x, other.y) !== room) continue;
+      other.remember(
+        `You saw ${this.character.name} escape the building through the ${routeLabel}.`,
+      );
+      other.nextThinkAt = Math.min(other.nextThinkAt, simNow() + 500);
+    }
+    // Do not let the only weapon leave the simulation with an escaping killer.
+    for (const item of [...this.carrying]) {
+      if (item.name !== "Knife") continue;
+      this.carrying.splice(this.carrying.indexOf(item), 1);
+      item.position = { x: this.x, y: this.y };
+      room.interactables.push(item);
+    }
+    this.statuses.delete("Murderous Intent");
+    this.grudge.clear();
+    this.standStill();
+    this.speech = null;
+    this.emote = null;
+    this.emoteHold = null;
+    this.escaped = true;
+    logAction(`${this.character.name} escapes the building!`, this);
+  }
+
   update(dt: number, now: number, world: Humanoid[]) {
+    if (this.escaped) return;
     if (this.speech && now > this.speech.until) this.speech = null;
     if (this.dead) {
       this.vx = 0;
@@ -1181,7 +1250,8 @@ export class Humanoid {
       null;
     if (this.followName) {
       const followed = world.find(
-        (other) => other.character.name === this.followName,
+        (other) =>
+          !other.escaped && other.character.name === this.followName,
       );
       const myRoom = roomOf(this.x, this.y);
       const followedRoom = followed ? roomOf(followed.x, followed.y) : null;
@@ -1311,7 +1381,7 @@ export class Humanoid {
       const target = world.find(
         (other) => other !== this && other.character.name === pending.target,
       );
-      if (!target || target.dead) {
+      if (!target || target.dead || target.escaped) {
         this.standStill(); // the pursuit lost its point (clears the blow too)
       } else if (
         Math.hypot(target.x - this.x, target.y - this.y) <= TOUCH_RANGE
@@ -1357,7 +1427,7 @@ export class Humanoid {
       const fromPrompt = roomByName(fromName)?.promptName ?? fromName;
       this.roomName = room.name;
       for (const other of world) {
-        if (other === this || other.dead) continue;
+        if (other === this || other.dead || other.escaped) continue;
         const otherRoomName = roomOf(other.x, other.y).name;
         if (otherRoomName === fromName) {
           other.remember(
@@ -1413,6 +1483,7 @@ export class Humanoid {
   }
 
   draw(ctx: CanvasRenderingContext2D) {
+    if (this.escaped) return;
     const { kind, sheet, facing, frame } = this.pose();
     const sprite = spriteFor(sheet.src);
     if (!spriteReady(sprite)) return;
@@ -1463,6 +1534,7 @@ export class Humanoid {
   }
 
   drawUnderlay(ctx: CanvasRenderingContext2D, now: number) {
+    if (this.escaped) return;
     ctx.save();
     ctx.translate(this.x, this.y);
 
@@ -1568,6 +1640,7 @@ export class Humanoid {
 
   // name label + speech bubble, drawn in world space so they scale with zoom
   drawOverlay(ctx: CanvasRenderingContext2D) {
+    if (this.escaped) return;
     this.drawNameLabel(ctx);
 
     ctx.save();

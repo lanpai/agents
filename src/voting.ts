@@ -8,6 +8,7 @@ import qrcode from "qrcode-generator";
 import { characterByName } from "./characters";
 import { isCutscenePlaying, type Shot } from "./cutscene";
 import type { Humanoid } from "./humanoid";
+import { ESCAPE_REVEAL_S, escapeRouteShot } from "./escapeRoute";
 
 const POLL_MS = 3000;
 
@@ -19,9 +20,14 @@ let tallies: Record<Question, Record<string, number>> = {
   victim: {},
 };
 let ended = false;
+// Presentation is a one-shot independent of the server's voting state. This
+// is restored from corpses on init so reloading between kills cannot make the
+// next stab replay the vote board and escape-route reveal.
+let revealClaimed = false;
 
 export function initVoting(humanoids: Humanoid[]) {
   started = true;
+  revealClaimed = humanoids.some((humanoid) => humanoid.dead);
   fetch("/api/vote/setup", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -77,8 +83,8 @@ export function reportKill(killer: string, victim: string): Promise<unknown> {
 // between the kill and the reveal.
 const REVEAL_KILLER_S = 3.2;
 const REVEAL_BOARD_S = 6;
-export const REVEAL_TOTAL_MS = (REVEAL_KILLER_S + REVEAL_BOARD_S) * 1000;
-let revealClaimed = false;
+export const REVEAL_TOTAL_MS =
+  (REVEAL_KILLER_S + REVEAL_BOARD_S + ESCAPE_REVEAL_S) * 1000;
 
 // whether a kill right now would come with the reveal — lets the stab scene
 // reserve enough queue time before it knows how the blow lands
@@ -112,7 +118,7 @@ export function claimRevealShots(
     })
     .catch(() => {});
 
-  return [
+  const shots: Shot[] = [
     {
       x: killer.x,
       y: killer.y - 10,
@@ -133,6 +139,9 @@ export function claimRevealShots(
       sfx: "win", // the standings landing is the payoff for everyone who voted
     },
   ];
+  const escape = escapeRouteShot();
+  if (escape) shots.push(escape);
+  return shots;
 }
 
 // sprite icons for the board: the front-facing idle cell of each character's
