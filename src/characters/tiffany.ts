@@ -21,7 +21,8 @@ export const tiffany: Character = {
   },
   language: { native: "en", known: ["en", "ja", "zh"] },
   initialMemory: "",
-  describeHumanoid: () => "",
+  describeHumanoid: () =>
+    "Tiffany is a game artist. She is wearing a jacket and jeans.",
 
   onInit: (humanoid) => {
     addStatusToHumanoid(humanoid, MaimaiPlayer);

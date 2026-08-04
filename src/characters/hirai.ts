@@ -19,5 +19,6 @@ export const hirai: Character = {
   },
   language: { native: "ja", known: ["ja"] },
   initialMemory: "",
-  describeHumanoid: () => "",
+  describeHumanoid: () =>
+    "Hirai is a game artist. He is wearing a T-shirt and jeans.",
 };

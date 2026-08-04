@@ -21,7 +21,8 @@ export const tyler: Character = {
   },
   language: { native: "en", known: ["en"] },
   initialMemory: "",
-  describeHumanoid: () => "",
+  describeHumanoid: () =>
+    "Tyler is a game designer. He is wearing a T-shirt and jeans.",
 
   onInit: (humanoid) => {
     addStatusToHumanoid(humanoid, DDRPlayer);
