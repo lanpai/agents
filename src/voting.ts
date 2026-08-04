@@ -267,7 +267,12 @@ export function drawVoteBoard(ctx: CanvasRenderingContext2D) {
   // QR to the voting page, sitting just left of the standings
   const qr = voteQr();
   const qrSize = 138;
-  const qrX = right - 240 - qrSize;
+  const qrX =
+    right -
+    20 -
+    200 -
+    Math.max(...placed.map(({ row }) => row.scale)) * 20 -
+    qrSize;
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(qrX, BOARD_TOP + 4, qrSize, qrSize, 14);
