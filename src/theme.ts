@@ -24,6 +24,11 @@ export const PALETTE = {
   // humanoids: a light rim around the black silhouette, plus its contact shadow
   rim: "#e8e2d4",
   bodyShadow: "rgba(0, 0, 0, 0.45)",
+  // what pools under a corpse: a dark body of blood with a wet highlight and
+  // the spatter thrown clear of it
+  blood: "rgba(104, 10, 16, 0.88)",
+  bloodSheen: "rgba(198, 36, 40, 0.45)",
+  bloodSpatter: "rgba(126, 14, 20, 0.75)",
   nameText: "#a9b2c2",
   itemText: "#e4dcc8",
   itemTextShadow: "rgba(0, 0, 0, 0.85)",
