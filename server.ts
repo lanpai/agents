@@ -507,36 +507,49 @@ async function callOpenAICompatible(
 }
 
 // ---- audience voting -------------------------------------------------
-// viewers open /vote.html, pick a display name, and guess who the killer
-// is. The game screen announces the round (cast + killer) and the moment
-// the killer goes for the kill. A correct guess earns up to MAX_POINTS,
-// decaying linearly from round start to the kill — so early (and unchanged)
-// votes are worth more. State lives in memory: a server restart wipes it.
+// viewers open /vote.html, pick a display name, and guess two things: who
+// the killer will turn out to be, and who will be the first victim. The
+// killer is emergent — nobody (including the game) knows at setup — so the
+// game screen reports both answers at the moment the killer goes for the
+// kill. Each correct guess earns up to MAX_POINTS, decaying linearly from
+// round start to the kill, so early (and unchanged) votes are worth more.
+// State lives in memory: a server restart wipes it.
 
 const MAX_POINTS = 1000;
+const QUESTIONS = ["killer", "victim"] as const;
+type Question = (typeof QUESTIONS)[number];
+type Vote = { pick: string; at: number };
 
 type VoteRound = {
   cast: string[];
-  killer: string;
   startAt: number;
   endedAt: number | null;
+  answers: Record<Question, string> | null; // reported with the kill
   // keyed by the viewer's chosen display name; `at` re-stamps on change
-  votes: Map<string, { pick: string; at: number }>;
+  votes: Map<string, Partial<Record<Question, Vote>>>;
 };
 
 let round: VoteRound | null = null;
 
 function voteResults(current: VoteRound, endedAt: number) {
   const span = Math.max(1, endedAt - current.startAt);
+  const score = (vote: Vote | undefined, answer: string) =>
+    vote && answer && vote.pick === answer
+      ? Math.max(0, Math.round((MAX_POINTS * (endedAt - vote.at)) / span))
+      : 0;
   return [...current.votes.entries()]
-    .map(([user, vote]) => ({
-      user,
-      pick: vote.pick,
-      points:
-        vote.pick === current.killer
-          ? Math.max(0, Math.round((MAX_POINTS * (endedAt - vote.at)) / span))
-          : 0,
-    }))
+    .map(([user, votes]) => {
+      const killerPoints = score(votes.killer, current.answers?.killer ?? "");
+      const victimPoints = score(votes.victim, current.answers?.victim ?? "");
+      return {
+        user,
+        killerPick: votes.killer?.pick ?? null,
+        victimPick: votes.victim?.pick ?? null,
+        killerPoints,
+        victimPoints,
+        points: killerPoints + victimPoints,
+      };
+    })
     .sort((a, b) => b.points - a.points);
 }
 
@@ -564,26 +577,23 @@ Bun.serve({
     },
     "/api/vote/setup": {
       POST: async (req) => {
-        const body = (await req.json()) as { cast?: unknown; killer?: unknown };
+        const body = (await req.json()) as { cast?: unknown };
         const cast = Array.isArray(body.cast)
           ? body.cast.filter((name): name is string => typeof name === "string")
           : [];
-        const killer = typeof body.killer === "string" ? body.killer : "";
-        if (cast.length === 0 || !cast.includes(killer)) {
+        if (cast.length === 0) {
           return Response.json({ error: "bad round" }, { status: 400 });
         }
         // a game-screen reload mid-round keeps the round and everyone's
-        // votes; only a different cast/killer starts a fresh one
+        // votes; only a different cast starts a fresh one
         const sameRound =
-          round !== null &&
-          round.killer === killer &&
-          round.cast.join("\n") === cast.join("\n");
+          round !== null && round.cast.join("\n") === cast.join("\n");
         if (!sameRound) {
           round = {
             cast,
-            killer,
             startAt: Date.now(),
             endedAt: null,
+            answers: null,
             votes: new Map(),
           };
         }
@@ -593,10 +603,18 @@ Bun.serve({
     "/api/vote/state": {
       GET: () => {
         if (!round) return Response.json({ active: false });
-        const tally: Record<string, number> = {};
-        for (const name of round.cast) tally[name] = 0;
-        for (const vote of round.votes.values()) {
-          tally[vote.pick] = (tally[vote.pick] ?? 0) + 1;
+        const tally: Record<Question, Record<string, number>> = {
+          killer: {},
+          victim: {},
+        };
+        for (const question of QUESTIONS) {
+          for (const name of round.cast) tally[question][name] = 0;
+        }
+        for (const votes of round.votes.values()) {
+          for (const question of QUESTIONS) {
+            const vote = votes[question];
+            if (vote) tally[question][vote.pick] = (tally[question][vote.pick] ?? 0) + 1;
+          }
         }
         return Response.json({
           active: true,
@@ -605,8 +623,8 @@ Bun.serve({
           startAt: round.startAt,
           tally,
           ended: round.endedAt !== null,
-          // the killer is only revealed alongside the final scoreboard
-          killer: round.endedAt !== null ? round.killer : null,
+          // the answers are only revealed alongside the final scoreboard
+          answers: round.endedAt !== null ? round.answers : null,
           results:
             round.endedAt !== null ? voteResults(round, round.endedAt) : null,
         });
@@ -618,25 +636,43 @@ Bun.serve({
         if (round.endedAt !== null) {
           return Response.json({ error: "voting closed" }, { status: 409 });
         }
-        const body = (await req.json()) as { user?: unknown; pick?: unknown };
+        const body = (await req.json()) as {
+          user?: unknown;
+          question?: unknown;
+          pick?: unknown;
+        };
         const user =
           typeof body.user === "string" ? body.user.trim().slice(0, 24) : "";
+        const question = QUESTIONS.find((key) => key === body.question);
         const pick = typeof body.pick === "string" ? body.pick : "";
-        if (user.length === 0 || !round.cast.includes(pick)) {
+        if (user.length === 0 || !question || !round.cast.includes(pick)) {
           return Response.json({ error: "bad vote" }, { status: 400 });
         }
         // re-tapping the current pick keeps its original (better) timestamp;
         // only an actual change re-stamps the vote
-        const existing = round.votes.get(user);
+        const votes = round.votes.get(user) ?? {};
+        const existing = votes[question];
         if (!existing || existing.pick !== pick) {
-          round.votes.set(user, { pick, at: Date.now() });
+          votes[question] = { pick, at: Date.now() };
         }
+        round.votes.set(user, votes);
         return Response.json({ ok: true });
       },
     },
     "/api/vote/kill": {
-      POST: () => {
-        if (round && round.endedAt === null) round.endedAt = Date.now();
+      POST: async (req) => {
+        const body = (await req
+          .json()
+          .catch(() => ({}))) as { killer?: unknown; victim?: unknown };
+        if (round && round.endedAt === null) {
+          const valid = (name: unknown) =>
+            typeof name === "string" && round!.cast.includes(name) ? name : "";
+          round.endedAt = Date.now();
+          round.answers = {
+            killer: valid(body.killer),
+            victim: valid(body.victim),
+          };
+        }
         return Response.json({ ok: true });
       },
     },

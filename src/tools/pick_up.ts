@@ -2,6 +2,7 @@ import type { Humanoid } from "../humanoid";
 import { itemsIn } from "../interactables";
 import { roomOf } from "../locations";
 import { logEmote } from "../log";
+import { playSfx } from "../sfx";
 import { approachAndUse } from "./shared";
 import type { SimTool } from "./types";
 
@@ -53,6 +54,10 @@ export const pickUp: SimTool = {
       room.interactables.splice(room.interactables.indexOf(item), 1);
       item.position = null;
       humanoid.carrying.push(item);
+      // the blade leaving the floor is the moment the story turns — only the
+      // killer can lift it (Knife.canBeTakenBy), so this sting is never a
+      // false alarm
+      if (item.name === "Knife") playSfx("knife");
       humanoid.remember(`You picked up the ${item.name}.`);
       for (const witness of world) {
         if (witness === humanoid || witness.dead) continue;

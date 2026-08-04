@@ -33,7 +33,6 @@ import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { drawSubtitles } from "./subtitles";
 import { addStatusToHumanoid } from "./statuses";
-import { MurderousIntent } from "./statuses/murderousIntent";
 import { UrgentMeeting } from "./statuses/urgentMeeting";
 import { advanceSimTime, simNow } from "./time";
 import { PALETTE } from "./theme";

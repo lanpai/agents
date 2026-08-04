@@ -18,6 +18,7 @@ import {
 } from "./camera";
 import { queueBeat, speak } from "./tts";
 import { playCutscene, type Shot } from "./cutscene";
+import { playSfx } from "./sfx";
 import { requestSubtitle } from "./subtitles";
 import {
   claimRevealShots,
@@ -1024,6 +1025,7 @@ export class Humanoid {
       // under letterbox while the swing plays out. No fade from black — the
       // blow is the cut.
       if (verb.present === "stabs") {
+        playSfx("stab"); // the blow itself, on the frame it lands
         const shots: Shot[] = [
           {
             x: (this.x + target.x) / 2,
@@ -1031,6 +1033,9 @@ export class Humanoid {
             zoomFrom: 4.5,
             zoomTo: 6,
             duration: stabSceneMs(this) / 1000,
+            // only a lethal blow earns the long sting — a survivable stab
+            // gets the impact and nothing more
+            sfx: target.dead ? "kill" : undefined,
           },
         ];
         // if (target.dead) {
@@ -1046,7 +1051,7 @@ export class Humanoid {
         // continuous sequence, so the camera never pops back to the sim
         // between the blow and the reveal
         if (target.dead) {
-          const reveal = claimRevealShots();
+          const reveal = claimRevealShots(this, target);
           if (reveal) shots.push(...reveal);
         }
         playCutscene(shots, { openFade: false });
@@ -1095,8 +1100,12 @@ export class Humanoid {
     if (this.dead) return;
     this.dead = true;
     // any death closes audience voting; the killer-reveal shots are folded
-    // into the stab cutscene itself, over in landStrike
-    reportKill();
+    // into the stab cutscene itself, over in landStrike. This fallback names
+    // whoever has a kill on their hands, and this humanoid as the victim.
+    reportKill(
+      world.find((other) => other.hasKilled)?.character.name ?? "",
+      this.character.name,
+    );
     // the collapse plays out and then stays put — its last frame is the corpse
     this.playAction("stabbed", this.facing);
     logAction(`${this.character.name} dies!`, this);
