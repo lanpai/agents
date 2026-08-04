@@ -83,11 +83,7 @@ function assignRoles(cast: Humanoid[]) {
     const others = cast.filter((humanoid) => humanoid !== self);
     return others[Math.floor(Math.random() * others.length)]!;
   };
-  const killer = cast[Math.floor(Math.random() * cast.length)]!;
-  addStatusToHumanoid(killer, MurderousIntent).target =
-    randomOther(killer).character.name;
   for (const humanoid of cast) {
-    if (humanoid === killer) continue;
     addStatusToHumanoid(humanoid, UrgentMeeting).target =
       randomOther(humanoid).character.name;
   }
@@ -185,7 +181,8 @@ function introShots(): Shot[] {
 // every reload. Production still opens normally; add ?intro=1 to a dev URL
 // when working on the intro itself.
 const playIntro =
-  !import.meta.env.DEV || new URLSearchParams(window.location.search).has("intro");
+  !import.meta.env.DEV ||
+  new URLSearchParams(window.location.search).has("intro");
 if (playIntro) playCutscene(introShots());
 
 function resize() {
@@ -267,11 +264,7 @@ const FETCH_REISSUE_S = 5;
 let fetchIdle = 0;
 let fetchCooldown = 0;
 
-function fetchTheKnife(
-  world: Humanoid[],
-  frozen: Set<unknown>,
-  dt: number,
-) {
+function fetchTheKnife(world: Humanoid[], frozen: Set<unknown>, dt: number) {
   const killer = world.find(isKiller);
   // a killer mid-spree who has put the blade down goes back for it too
   if (
