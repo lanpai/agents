@@ -31,6 +31,9 @@ import { driftAnger } from "./anger";
 import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { drawSubtitles } from "./subtitles";
+import { addStatusToHumanoid } from "./statuses";
+import { MurderousIntent } from "./statuses/murderousIntent";
+import { UrgentMeeting } from "./statuses/urgentMeeting";
 import { advanceSimTime, simNow } from "./time";
 import { PALETTE } from "./theme";
 import { drawVoteBoard, initVoting } from "./voting";
@@ -62,6 +65,7 @@ const SPAWNS: [Character, number, number][] = [
 ];
 
 const humanoids = loadHumanoids();
+const freshGame = humanoids.length === 0;
 // anyone not in the save (fresh start, or a newly added character) spawns
 // at their home spot
 for (const [character, x, y] of SPAWNS) {
@@ -69,6 +73,26 @@ for (const [character, x, y] of SPAWNS) {
     humanoids.push(new Humanoid(character, x, y));
   }
 }
+
+// a fresh game deals the roles: one random killer with a random victim, and
+// an urgent one-on-one for everyone else — the whole office is trying to get
+// somebody alone, so a private invitation proves nothing. Saved games carry
+// their dealt roles in the persisted statuses instead.
+function assignRoles(cast: Humanoid[]) {
+  const randomOther = (self: Humanoid) => {
+    const others = cast.filter((humanoid) => humanoid !== self);
+    return others[Math.floor(Math.random() * others.length)]!;
+  };
+  const killer = cast[Math.floor(Math.random() * cast.length)]!;
+  addStatusToHumanoid(killer, MurderousIntent).target =
+    randomOther(killer).character.name;
+  for (const humanoid of cast) {
+    if (humanoid === killer) continue;
+    addStatusToHumanoid(humanoid, UrgentMeeting).target =
+      randomOther(humanoid).character.name;
+  }
+}
+if (freshGame) assignRoles(humanoids);
 
 // places saved items into rooms and carrying arrays; when no save exists,
 // the seeds declared in src/rooms remain

@@ -25,6 +25,7 @@ type Line = {
   emotion: SpeechEmotion;
   language: SpeechLanguage;
   volume: number;
+  waitFor?: Promise<unknown>; // e.g. the subtitle translation
   onStart?: () => void;
   onEnd?: () => void;
 };
@@ -32,6 +33,7 @@ type Line = {
 // a silent beat: an *action* bubble holding the screen like a spoken line
 type Beat = {
   silentMs: number;
+  waitFor?: Promise<unknown>;
   onStart?: () => void;
   onEnd?: () => void;
 };
@@ -94,6 +96,7 @@ export function speak(
     emotion?: SpeechEmotion;
     language: SpeechLanguage;
     volume?: number;
+    waitFor?: Promise<unknown>;
     onStart?: () => void;
     onEnd?: () => void;
   },
@@ -117,7 +120,11 @@ export function speak(
 // instant bubble.
 export function queueBeat(
   silentMs: number,
-  callbacks: { onStart?: () => void; onEnd?: () => void },
+  callbacks: {
+    waitFor?: Promise<unknown>;
+    onStart?: () => void;
+    onEnd?: () => void;
+  },
 ): boolean {
   if (queued >= MAX_QUEUE) return false;
   queued++;
@@ -134,6 +141,10 @@ async function pump() {
   const item = queue.shift();
   if (!item) return;
   playing = true;
+
+  // a bubble never opens ahead of what it's waiting on (its subtitle
+  // translation); the request has its own timeout, so this can't hang
+  if (item.waitFor) await item.waitFor.catch(() => {});
 
   if ("silentMs" in item) {
     item.onStart?.();
