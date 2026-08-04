@@ -14,6 +14,7 @@ import {
 } from "../locations";
 import { logAction, logEmote } from "../log";
 import { simNow } from "../time";
+import { reportKill } from "../voting";
 
 export function reachableTarget(
   humanoid: Humanoid,
@@ -70,6 +71,10 @@ export function strike(
   )
     ? (input.body_part as BodyPart)
     : "torso";
+
+  // the moment the killer goes for the kill: audience guessing is over,
+  // whether the blow lands now or after a pursuit
+  if (verb.present === "stabs") reportKill();
 
   if (Math.hypot(target.x - humanoid.x, target.y - humanoid.y) <= TOUCH_RANGE) {
     humanoid.landStrike(target, part, damage, verb, world, simNow());
