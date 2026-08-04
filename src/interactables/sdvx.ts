@@ -7,6 +7,7 @@ import { Interactable } from "./types";
 
 export class SDVX extends Interactable {
   name = "SDVX";
+  override onGroundArt = { src: "/arcade/sdvx.png", width: 24 };
   onGroundDescription = "You see a Sound Voltex cabinet.";
 
   override distraction = true;

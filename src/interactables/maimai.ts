@@ -8,6 +8,7 @@ import { Interactable } from "./types";
 
 export class Maimai extends Interactable {
   name = "maimai";
+  override onGroundArt = { src: "/arcade/maimai.png", width: 32 };
   onGroundDescription = "You see a maimai DX cabinet.";
 
   override distraction = true;

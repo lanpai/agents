@@ -11,6 +11,6 @@ export const arcadeRoom = new Room({
   w: 200,
   h: 200,
   doors: ["Game Room", "Conference Room", "Downstairs Work Area"],
-  interactables: [new Maimai(180, 100), new DDR(20, 180), new SDVX(20, 150)],
+  interactables: [new Maimai(180, 100), new DDR(20, 168), new SDVX(20, 104)],
   floor: "carpet",
 });
