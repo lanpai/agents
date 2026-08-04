@@ -189,12 +189,9 @@ function draw(now: number) {
     for (const interactable of room.interactables) interactable.draw(ctx);
   }
 
-  for (const humanoid of sortedHumanoids)
-    if (!humanoid.dead) humanoid.draw(ctx);
-
-  // a body is the loudest thing in the room: it draws over the living as well
-  // as the furniture, so it can never be lost behind whoever is standing there
-  for (const humanoid of sortedHumanoids) if (humanoid.dead) humanoid.draw(ctx);
+  // dead and living share the same painter's order: whoever is lower on
+  // screen draws in front, so someone standing below a body covers it
+  for (const humanoid of sortedHumanoids) humanoid.draw(ctx);
 
   for (const humanoid of sortedHumanoids) humanoid.drawOverlay(ctx);
 
