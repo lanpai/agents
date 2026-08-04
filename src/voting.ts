@@ -120,6 +120,7 @@ export function claimRevealShots(): Shot[] | null {
       duration: REVEAL_BOARD_S,
       title: "top voters",
       board,
+      sfx: "win", // the standings landing is the payoff for everyone who voted
     },
   ];
 }

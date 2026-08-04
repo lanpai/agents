@@ -1,4 +1,5 @@
 import { camera } from "./camera";
+import { playSfx, type SoundEffect } from "./sfx";
 
 // a cutscene is a sequence of held camera compositions. Each shot cuts (no
 // glide) to its spot, then pushes in slowly from zoomFrom to zoomTo — the
@@ -15,6 +16,10 @@ export type Shot = {
   // scoreboard rows drawn centered on screen (e.g. the audience's top
   // detectives after the reveal); the first row draws largest
   board?: { name: string; points: number }[];
+  // sting fired once, the instant this shot cuts in. Declaring it on the shot
+  // rather than at the call site keeps the sound tied to the frame the
+  // audience sees, however the shots ahead of it are timed.
+  sfx?: SoundEffect;
 };
 
 const TEXT_FADE_IN = 0.5;
@@ -58,6 +63,15 @@ export function playCutscene(
   playing = true;
   window.addEventListener("keydown", skipOnEscape, true);
   applyCamera(); // cut to the first shot before the next frame draws
+  enterShot();
+}
+
+// each shot's sting fires as it takes the screen. A frame long enough to jump
+// past a whole shot skips that shot's sound too — it was never seen, and a
+// sting for a shot already gone reads as a glitch.
+function enterShot() {
+  const sfx = shots[index]?.sfx;
+  if (sfx) playSfx(sfx);
 }
 
 function endCutscene() {
@@ -90,6 +104,7 @@ export function updateCutscene(dt: number) {
       endCutscene();
       return;
     }
+    if (shotT < shots[index]!.duration) enterShot();
   }
   applyCamera();
 }
