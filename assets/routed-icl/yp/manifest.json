@@ -1,0 +1,39 @@
+{
+  "character": "YP",
+  "language": "en",
+  "source_audio": "/raid/niji-chess/dev-jerry/agents/ignore/voices/YP.mp3",
+  "sample_rate_hz": 24000,
+  "speaker_embedding_mean_file": "speaker_embedding_mean.json",
+  "clips": [
+    {
+      "file": "01_triumphant_joy.wav",
+      "text": "We did it! Somebody call the history books, because today just became legendary!",
+      "emotion": "triumphant_joy",
+      "speaker_embedding_file": "01_triumphant_joy.speaker_embedding.json"
+    },
+    {
+      "file": "02_panic.wav",
+      "text": "Don't open that door! Whatever is knocking knows my name—and I never told it.",
+      "emotion": "panic",
+      "speaker_embedding_file": "02_panic.speaker_embedding.json"
+    },
+    {
+      "file": "03_fury.wav",
+      "text": "You didn't steal my crown. You stole my father's dying wish—and I will take both back.",
+      "emotion": "fury",
+      "speaker_embedding_file": "03_fury.speaker_embedding.json"
+    },
+    {
+      "file": "04_grief.wav",
+      "text": "I kept setting a place for you, even after everyone else stopped believing you'd come home.",
+      "emotion": "grief",
+      "speaker_embedding_file": "04_grief.speaker_embedding.json"
+    },
+    {
+      "file": "05_romantic.wav",
+      "text": "The whole world can forget me—as long as you remember the way I said your name.",
+      "emotion": "romantic",
+      "speaker_embedding_file": "05_romantic.speaker_embedding.json"
+    }
+  ]
+}

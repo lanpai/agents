@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "server": "bun --hot server.ts",
+    "test": "bun test",
     "build": "vite build",
     "preview": "vite preview"
   },

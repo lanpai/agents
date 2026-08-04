@@ -12,12 +12,14 @@ export const leland: Character = {
   description:
     "You are Leland, you are in charge of hiring and socials at Spellbrush. You love to joke around and poke fun. You are unhurried and enjoy trying new things that catch your interest.",
   voice: {
+    routedVoice: "leland",
     baseF0: 130,
     rate: 75,
     scale: 1.0,
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "en", known: ["en"] },
   initialMemory: "",
   describeHumanoid: () => "Leland has exceptionally cool style as usual.",
 

@@ -151,7 +151,12 @@ function introShots(): Shot[] {
   });
   return shots;
 }
-playCutscene(introShots());
+// Iterating on the sim shouldn't require sitting through the credits after
+// every reload. Production still opens normally; add ?intro=1 to a dev URL
+// when working on the intro itself.
+const playIntro =
+  !import.meta.env.DEV || new URLSearchParams(window.location.search).has("intro");
+if (playIntro) playCutscene(introShots());
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;

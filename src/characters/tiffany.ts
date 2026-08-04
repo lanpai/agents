@@ -11,12 +11,14 @@ export const tiffany: Character = {
   },
   description: "",
   voice: {
+    routedVoice: "tiffany",
     baseF0: 130,
     rate: 75,
     scale: 1.0,
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "en", known: ["en", "ja", "zh"] },
   initialMemory: "",
   describeHumanoid: () => "",
 

@@ -3,6 +3,18 @@ import { agentCalls } from "./calls";
 import { setCameraAutoFollow } from "./camera";
 import { roomOf } from "./locations";
 import { selected } from "./selection";
+import {
+  getTtsServerUrl,
+  setTtsServerUrl,
+  TTS_SERVER_PRESETS,
+} from "./ttsSettings";
+import {
+  getCrossLanguageEmotion,
+  getSpeechMode,
+  setCrossLanguageEmotion,
+  setSpeechMode,
+  type SpeechMode,
+} from "./speechLanguage";
 
 const REFRESH_MS = 250;
 
@@ -61,6 +73,109 @@ export function initSidebar(options: {
   const buttons = document.createElement("div");
   buttons.append(pauseButton, clearButton);
 
+  const languageSettings = document.createElement("div");
+  Object.assign(languageSettings.style, { marginTop: "12px" });
+  const languageLabel = document.createElement("label");
+  languageLabel.textContent = "Spoken language mode";
+  languageLabel.htmlFor = "speech-language-mode";
+  const languageSelect = document.createElement("select");
+  languageSelect.id = "speech-language-mode";
+  Object.assign(languageSelect.style, {
+    boxSizing: "border-box",
+    display: "block",
+    marginTop: "4px",
+    padding: "5px",
+    width: "100%",
+  });
+  const languageOptions: { value: SpeechMode; label: string }[] = [
+    { value: "presentation", label: "Presentation — everyone speaks English" },
+    { value: "character", label: "Character languages — adaptive replies" },
+  ];
+  for (const entry of languageOptions) {
+    const option = document.createElement("option");
+    option.value = entry.value;
+    option.textContent = entry.label;
+    languageSelect.appendChild(option);
+  }
+  languageSelect.value = getSpeechMode();
+  languageSelect.addEventListener("change", () => {
+    setSpeechMode(languageSelect.value as SpeechMode);
+  });
+
+  const emotionLabel = document.createElement("label");
+  Object.assign(emotionLabel.style, {
+    display: "block",
+    marginTop: "8px",
+  });
+  const emotionCheckbox = document.createElement("input");
+  emotionCheckbox.type = "checkbox";
+  emotionCheckbox.checked = getCrossLanguageEmotion();
+  emotionCheckbox.addEventListener("change", () => {
+    setCrossLanguageEmotion(emotionCheckbox.checked);
+  });
+  emotionLabel.append(
+    emotionCheckbox,
+    document.createTextNode(
+      " Experimental emotion for non-native speech (falls back to neutral)",
+    ),
+  );
+  const languageStatus = document.createElement("div");
+  Object.assign(languageStatus.style, { marginTop: "3px", color: "#9ba4b4" });
+  languageStatus.textContent = "used for the next character decision / spoken line";
+  languageSettings.append(
+    languageLabel,
+    languageSelect,
+    emotionLabel,
+    languageStatus,
+  );
+
+  const ttsSettings = document.createElement("div");
+  Object.assign(ttsSettings.style, { marginTop: "12px" });
+  const ttsLabel = document.createElement("label");
+  ttsLabel.textContent = "TTS server URL";
+  ttsLabel.htmlFor = "tts-server-url";
+  const ttsInput = document.createElement("input");
+  ttsInput.id = "tts-server-url";
+  ttsInput.type = "url";
+  ttsInput.setAttribute("list", "tts-server-presets");
+  ttsInput.value = getTtsServerUrl();
+  Object.assign(ttsInput.style, {
+    boxSizing: "border-box",
+    display: "block",
+    font: "12px monospace",
+    marginTop: "4px",
+    padding: "5px",
+    width: "100%",
+  });
+  const ttsPresets = document.createElement("datalist");
+  ttsPresets.id = "tts-server-presets";
+  for (const value of TTS_SERVER_PRESETS) {
+    const option = document.createElement("option");
+    option.value = value;
+    ttsPresets.appendChild(option);
+  }
+  const ttsStatus = document.createElement("div");
+  Object.assign(ttsStatus.style, { minHeight: "16px", marginTop: "3px" });
+  ttsStatus.textContent = "used for the next spoken line";
+  const saveTtsUrl = () => {
+    try {
+      ttsInput.value = setTtsServerUrl(ttsInput.value);
+      ttsStatus.textContent = "saved — used for the next spoken line";
+      ttsStatus.style.color = "#176b2c";
+    } catch (error) {
+      ttsStatus.textContent = String(error);
+      ttsStatus.style.color = "#a00";
+    }
+  };
+  ttsInput.addEventListener("change", saveTtsUrl);
+  ttsInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    saveTtsUrl();
+    ttsInput.blur();
+  });
+  ttsSettings.append(ttsLabel, ttsInput, ttsPresets, ttsStatus);
+
   const selectedHeader = document.createElement("h3");
   selectedHeader.textContent = "selected";
   const selectedSection = document.createElement("div");
@@ -71,6 +186,8 @@ export function initSidebar(options: {
 
   sidebar.append(
     buttons,
+    languageSettings,
+    ttsSettings,
     selectedHeader,
     selectedSection,
     callsHeader,

@@ -7,6 +7,10 @@ import {
   describeInteractableOnGround,
 } from "./interactables";
 import { ROOMS, roomOf } from "./locations";
+import {
+  getSpeechMode,
+  SPEECH_LANGUAGE_NAMES,
+} from "./speechLanguage";
 import { buildTools, executeTool } from "./tools";
 
 // decisions are serialized per room (a thinking humanoid freezes its room, so
@@ -36,6 +40,7 @@ Guidelines:
 - If someone is on their way to you or you agreed to meet, give them a moment to arrive before wandering off to look for them.
 - Do not make up observations of the world around you, all you can see is what is prompted to you.
 - Do not pretend to interact with objects you are not explicitly told are visible to you.
+- For every say/yell call, written_message is the complete natural text shown to the audience. The runtime derives the spoken line from that exact text. pronunciations may contain only compact token substitutions for numbers, symbols, versions, or acronyms that TTS could misread, such as 5.0 → five point zero or SS+ → S S plus. Never place ordinary words, phrases, added details, or paraphrases in pronunciations. Use [] when none are needed. The name Hirai is handled automatically.
 
 DO NOT MAKE UP ANY LOCATIONS IN THE MANOR! THE ROOMS IN THE MANOR ARE AS FOLLOWS:
 ${ROOMS.map((room) => `- ${room.promptName}`).join("\n")}
@@ -277,7 +282,22 @@ function buildSystemPrompt(humanoid: Humanoid): string {
     "",
     `Your name is ${humanoid.character.name}.`,
     humanoid.character.description,
+    "",
+    speechLanguagePrompt(humanoid),
   ].join("\n");
+}
+
+function speechLanguagePrompt(humanoid: Humanoid): string {
+  if (getSpeechMode() === "presentation") {
+    return "Presentation language mode is active. Speak every line in English and set language to en, even if English is not normally one of your languages.";
+  }
+  const { native, known } = humanoid.character.language;
+  return `Character language mode is active. You natively speak ${SPEECH_LANGUAGE_NAMES[native]} and can speak and understand ${known.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}.
+- When directly replying to someone, use the language they most recently used if you can speak it.
+- When talking to yourself, address myself and always use your native language, even if others are nearby.
+- Otherwise use your native language when alone or beginning a conversation only when the tool offers it for that audience.
+- The say/yell tool offers only languages understood by everyone currently in earshot. Chinese is available only when every listener understands Chinese. If no shared language exists, you continue in your native language and some listeners may not understand.
+- Always set the say/yell language field to the language the message is actually written in.`;
 }
 
 // long-term memory first, then each recent event as its own message, then
@@ -349,7 +369,14 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
               ? "moving"
               : "standing still"
       } in the room with you, ${formatFeet(distance)} away`;
-      if (other.speech) entry += `, saying "${other.speech.text}"`;
+      if (other.speech) {
+        const understands =
+          getSpeechMode() === "presentation" ||
+          humanoid.character.language.known.includes(other.speech.language);
+        entry += understands
+          ? `, saying in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}${other.speech.addressing === "everyone in the room" ? "" : ` to ${other.speech.addressing}`}: "${other.speech.text}"`
+          : `, speaking in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}, which you do not understand`;
+      }
       if (!other.dead && followingMe)
         entry +=
           ". They will come along wherever you go — to travel together, simply lead the way";
