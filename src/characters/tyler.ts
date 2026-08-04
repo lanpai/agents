@@ -11,6 +11,7 @@ export const tyler: Character = {
   },
   description: "",
   voice: {
+    routedVoice: "tyler",
     baseF0: 130,
     rate: 75,
     scale: 1.0,
