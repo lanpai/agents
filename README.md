@@ -68,12 +68,12 @@ default and uses each character's native language while letting multilingual
 characters match the person they are replying to: Hirai speaks Japanese; Eric
 and Yanghua default to Chinese and also speak Japanese and English; Tiffany
 defaults to English and also speaks Japanese and Chinese. `Presentation` asks
-every character to speak English. In character mode, the available language is
-restricted to languages understood by every person in earshot. Eric and
-Yanghua therefore use English around English-only coworkers, Japanese with
-Hirai, and Chinese only when every listener present understands Chinese. When
-no shared language exists, a character continues in their native language and
-listeners who do not know it remember that they could not understand.
+every character to speak English. In character mode, everyone automatically
+understands every language, while output-language etiquette is based on what
+people in earshot can speak. Eric and Yanghua therefore use English around
+English-speaking coworkers, Japanese with Hirai, and Chinese only when every
+listener present can also speak Chinese. When no shared spoken language exists,
+a character continues in their native language and everyone still understands.
 Speech explicitly addressed to `myself` always uses the speaker's native
 language, even when someone else happens to be nearby.
 

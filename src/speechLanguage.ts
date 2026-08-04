@@ -44,17 +44,17 @@ export function isSpeechLanguage(value: unknown): value is SpeechLanguage {
   return (SPEECH_LANGUAGES as readonly unknown[]).includes(value);
 }
 
-export function mutuallyUnderstoodLanguages(
+export function sharedConversationLanguages(
   speakerLanguages: readonly SpeechLanguage[],
   nativeLanguage: SpeechLanguage,
   audienceLanguages: readonly (readonly SpeechLanguage[])[],
 ): SpeechLanguage[] {
   if (audienceLanguages.length === 0) return [nativeLanguage];
-  const mutual = speakerLanguages.filter((language) =>
+  const shared = speakerLanguages.filter((language) =>
     audienceLanguages.every((languages) => languages.includes(language)),
   );
-  // Some pairs have no shared language (for example Hirai and an English-only
-  // character). They still speak their only/native language; the listener is
-  // explicitly told that they could not understand it.
-  return mutual.length > 0 ? mutual : [nativeLanguage];
+  // This is conversational etiquette, not comprehension: everyone understands
+  // every language. When no shared spoken language exists, each character
+  // simply continues in their own native language.
+  return shared.length > 0 ? shared : [nativeLanguage];
 }

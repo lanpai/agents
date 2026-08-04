@@ -3,7 +3,7 @@ import { roomOf } from "../locations";
 import {
   getSpeechMode,
   isSpeechLanguage,
-  mutuallyUnderstoodLanguages,
+  sharedConversationLanguages,
   SPEECH_LANGUAGE_NAMES,
   type SpeechLanguage,
 } from "../speechLanguage";
@@ -45,7 +45,7 @@ function speechLanguagesForAudience(
       );
     })
     .map((other) => other.character.language.known);
-  return mutuallyUnderstoodLanguages(
+  return sharedConversationLanguages(
     humanoid.character.language.known,
     humanoid.character.language.native,
     audience,
@@ -93,7 +93,7 @@ export function speechToolFields(
           .join(", ")}). ` +
         (getSpeechMode() === "presentation"
           ? "Presentation mode requires English."
-          : `For speech to a person or the room, use a language understood by every listener; the mutually understood options are ${audienceLanguages.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}. Use ${SPEECH_LANGUAGE_NAMES[humanoid.character.language.native]} only when addressing myself.`),
+          : `Everyone understands every language, but use a language everyone in earshot can also speak when possible; the shared conversational options are ${audienceLanguages.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}. Use ${SPEECH_LANGUAGE_NAMES[humanoid.character.language.native]} when addressing myself.`),
     },
     addressing: {
       type: "string" as const,

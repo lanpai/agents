@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   crossLanguageEmotionFromStored,
-  mutuallyUnderstoodLanguages,
+  sharedConversationLanguages,
   speechModeFromStored,
 } from "./speechLanguage";
 
@@ -17,17 +17,17 @@ describe("speech setting defaults", () => {
   });
 });
 
-describe("mutual spoken languages", () => {
+describe("shared conversation languages", () => {
   const eric = ["zh", "ja", "en"] as const;
 
   test("restricts Eric to English when Leland is listening", () => {
-    expect(mutuallyUnderstoodLanguages(eric, "zh", [["en"]])).toEqual(["en"]);
+    expect(sharedConversationLanguages(eric, "zh", [["en"]])).toEqual(["en"]);
   });
 
   test("uses Japanese with Hirai and Chinese with Chinese speakers", () => {
-    expect(mutuallyUnderstoodLanguages(eric, "zh", [["ja"]])).toEqual(["ja"]);
+    expect(sharedConversationLanguages(eric, "zh", [["ja"]])).toEqual(["ja"]);
     expect(
-      mutuallyUnderstoodLanguages(eric, "zh", [
+      sharedConversationLanguages(eric, "zh", [
         ["zh", "ja", "en"],
         ["en", "ja", "zh"],
       ]),
@@ -35,7 +35,7 @@ describe("mutual spoken languages", () => {
   });
 
   test("falls back to native when no shared language exists", () => {
-    expect(mutuallyUnderstoodLanguages(["ja"], "ja", [["en"]])).toEqual([
+    expect(sharedConversationLanguages(["ja"], "ja", [["en"]])).toEqual([
       "ja",
     ]);
   });

@@ -35,7 +35,6 @@ import type {
 import { whitecatSprites } from "./characters/whitecat";
 import type { SpeechEmotion } from "./speechEmotion";
 import {
-  getSpeechMode,
   SPEECH_LANGUAGE_NAMES,
   type SpeechLanguage,
 } from "./speechLanguage";
@@ -808,10 +807,7 @@ export class Humanoid {
       const adjacent = myRoom.doors.includes(otherRoom.name);
       if (!sameRoom && !(verb === "yell" && adjacent)) continue;
       const compose = (heard: string) =>
-        getSpeechMode() !== "presentation" &&
-        !other.character.language.known.includes(language)
-          ? `You heard ${this.character.name} speak in ${SPEECH_LANGUAGE_NAMES[language]}, but you could not understand the words.`
-          : sameRoom
+        sameRoom
           ? `You heard ${this.character.name} ${verb}${addressing === "everyone in the room" ? "" : ` to ${addressing}`} in ${SPEECH_LANGUAGE_NAMES[language]}: "${heard}"`
           : `You heard ${this.character.name} yell in ${SPEECH_LANGUAGE_NAMES[language]} from ${myRoom.promptName}: "${heard}"`;
       const hearWarp = incomingSpeechWarp(other);
