@@ -13,10 +13,7 @@ import {
   describeInteractableOnGround,
 } from "./interactables";
 import { ROOMS, roomOf } from "./locations";
-import {
-  getSpeechMode,
-  SPEECH_LANGUAGE_NAMES,
-} from "./speechLanguage";
+import { getSpeechMode, SPEECH_LANGUAGE_NAMES } from "./speechLanguage";
 import { buildTools, executeTool } from "./tools";
 
 // decisions are serialized per room (a thinking humanoid freezes its room, so
@@ -432,7 +429,7 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
     if (roomOf(end.x, end.y) === room) {
       lines.push(
         "",
-        `${other.character.name} is about to enter the room from ${otherRoom.promptName}.`,
+        `${other.character.name} is about to enter the room from ${otherRoom.promptName} though they can't hear anything you say yet.`,
       );
     }
   }
