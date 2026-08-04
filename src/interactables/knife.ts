@@ -11,6 +11,9 @@ import { Item } from "./types";
 
 export class Knife extends Item {
   name = "Knife";
+  // a chef's knife is about a foot long — 10 world units — but at that size it
+  // is a splinter on the floor and nobody spots it. 18 reads as a knife.
+  override onGroundArt = { src: "/knife.png", width: 18 };
   onGroundDescription = (humanoid: Humanoid) =>
     humanoid.statuses.has("Murderous Intent")
       ? "You see a knife that could probably be used to stab someone."
