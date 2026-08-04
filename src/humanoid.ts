@@ -28,6 +28,7 @@ import type {
 } from "./characters/types";
 import { whitecatSprites } from "./characters/whitecat";
 import type { SpeechEmotion } from "./speechEmotion";
+import { spriteFor, spriteReady } from "./sprites";
 import type { Status } from "./statuses/types";
 
 export const UNITS_PER_FOOT = 10;
@@ -92,19 +93,7 @@ const IDLE_GRACE_S = 0.2;
 const BLOOD_GROW_S = 4;
 const BLOOD_RADIUS = 16;
 
-// one Image per sprite path, shared across every humanoid using it
-const spriteCache = new Map<string, HTMLImageElement>();
 const SPRITE_SIZE = 36; // world-unit footprint every sprite is drawn at
-
-function spriteFor(src: string): HTMLImageElement {
-  let image = spriteCache.get(src);
-  if (!image) {
-    image = new Image();
-    image.src = src;
-    spriteCache.set(src, image);
-  }
-  return image;
-}
 
 // sheet rows, in the order scripts/make_sprite_sheet.py lays them out. Front
 // doubles as the idle animation: it is what plays whenever nobody is walking.
@@ -1238,7 +1227,7 @@ export class Humanoid {
   draw(ctx: CanvasRenderingContext2D) {
     const { kind, sheet, facing, frame } = this.pose();
     const sprite = spriteFor(sheet.src);
-    if (!sprite.complete || sprite.naturalWidth === 0) return;
+    if (!spriteReady(sprite)) return;
     // nearest-neighbour picks different source pixels every frame while the
     // sprite is being minified, which reads as shimmer on fine detail — so
     // filter when shrinking the cell and stay crisp once it's blown up
@@ -1263,7 +1252,7 @@ export class Humanoid {
     const showing = this.reveal ? revealAmount(this.reveal.t) : 0;
     const cat = showing > 0 ? whitecatSprites[kind] : null;
     const catSprite = cat ? spriteFor(cat.src) : null;
-    const catReady = !!catSprite?.complete && catSprite.naturalWidth > 0;
+    const catReady = !!catSprite && spriteReady(catSprite);
     if (showing < 1 || !catReady) {
       drawRimmedSprite(ctx, sheet, sprite, facing, frame);
     }
