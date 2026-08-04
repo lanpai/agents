@@ -1,8 +1,8 @@
-// audience voting, game side: on load the game announces the round (the
-// cast, and who the killer secretly is) to the server, and later the moment
-// the killer goes for the kill. Viewers guess from /vote.html on their
-// phones. This module also polls the live tally and draws it as the
-// on-screen suspect board.
+// audience voting, game side: on load the game announces the round (just
+// the cast — the killer is emergent, so nobody knows yet), and later reports
+// who went for the kill and who they went for. Viewers guess both from
+// /vote.html on their phones. This module also polls the live tallies and
+// draws them as the on-screen suspicion boards.
 
 import qrcode from "qrcode-generator";
 import { characterByName } from "./characters";
@@ -11,29 +11,31 @@ import type { Humanoid } from "./humanoid";
 
 const POLL_MS = 3000;
 
+type Question = "killer" | "victim";
+
 let started = false;
-let tally: Record<string, number> = {};
+let tallies: Record<Question, Record<string, number>> = {
+  killer: {},
+  victim: {},
+};
 let ended = false;
-let killerHumanoid: Humanoid | null = null;
 
 export function initVoting(humanoids: Humanoid[]) {
-  const killer = humanoids.find((humanoid) =>
-    humanoid.statuses.has("Murderous Intent"),
-  );
-  if (!killer) return; // no killer, no game
   started = true;
-  killerHumanoid = killer;
   fetch("/api/vote/setup", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       cast: humanoids.map((humanoid) => humanoid.character.name),
-      killer: killer.character.name,
     }),
   })
     .then(() => {
       // a save where somebody already died loads past the reveal
-      if (humanoids.some((humanoid) => humanoid.dead)) reportKill();
+      const victim = humanoids.find((humanoid) => humanoid.dead);
+      if (victim) {
+        const killer = humanoids.find((humanoid) => humanoid.hasKilled);
+        reportKill(killer?.character.name ?? "", victim.character.name);
+      }
     })
     .catch(() => {});
 
@@ -42,11 +44,11 @@ export function initVoting(humanoids: Humanoid[]) {
       const response = await fetch("/api/vote/state");
       const state = (await response.json()) as {
         active: boolean;
-        tally?: Record<string, number>;
+        tally?: Record<Question, Record<string, number>>;
         ended?: boolean;
       };
       if (state.active) {
-        tally = state.tally ?? {};
+        tallies = state.tally ?? { killer: {}, victim: {} };
         ended = state.ended === true;
       }
     } catch {
@@ -57,11 +59,16 @@ export function initVoting(humanoids: Humanoid[]) {
   setInterval(() => void poll(), POLL_MS);
 }
 
-// the killer went for the kill, so guessing is over. The server ignores
-// repeats, so callers don't need to dedupe.
-export function reportKill(): Promise<unknown> {
+// the killer went for the kill, so guessing is over; both answers ride along
+// so the server can score the two questions. The server keeps only the first
+// report, so callers don't need to dedupe.
+export function reportKill(killer: string, victim: string): Promise<unknown> {
   if (!started) return Promise.resolve();
-  return fetch("/api/vote/kill", { method: "POST" }).catch(() => {});
+  return fetch("/api/vote/kill", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ killer, victim }),
+  }).catch(() => {});
 }
 
 // the first actual kill plays a reveal: a shot naming the killer, then the
@@ -76,19 +83,22 @@ let revealClaimed = false;
 // whether a kill right now would come with the reveal — lets the stab scene
 // reserve enough queue time before it knows how the blow lands
 export function revealAvailable(): boolean {
-  return started && !revealClaimed && killerHumanoid !== null;
+  return started && !revealClaimed;
 }
 
-// claim the reveal (strictly once): closes the vote, starts fetching the
-// final standings, and returns the shots. The board fills in as the results
-// arrive — drawCutscene reads it live, and it lands long before the shot.
-export function claimRevealShots(): Shot[] | null {
+// claim the reveal (strictly once): closes the vote with both answers,
+// starts fetching the final standings, and returns the shots. The board
+// fills in as the results arrive — drawCutscene reads it live, and it lands
+// long before the shot.
+export function claimRevealShots(
+  killer: Humanoid,
+  victim: Humanoid,
+): Shot[] | null {
   if (!revealAvailable()) return null;
   revealClaimed = true;
-  const killer = killerHumanoid!;
 
   const board: { name: string; points: number }[] = [];
-  void reportKill()
+  void reportKill(killer.character.name, victim.character.name)
     .then(() => fetch("/api/vote/state"))
     .then((response) => response.json())
     .then((state: { results?: { user: string; points: number }[] | null }) => {
@@ -173,35 +183,49 @@ function voteQr(): HTMLCanvasElement {
 }
 
 // every row animates toward its place in the standings: y slides when a name
-// overtakes another, scale grows as a name takes (or loses) the lead
-const boardRows = new Map<string, { y: number; scale: number }>();
+// overtakes another, scale grows as a name takes (or loses) the lead. One
+// map per question, since the same name sits at different spots on each.
+const boardRows: Record<Question, Map<string, { y: number; scale: number }>> =
+  { killer: new Map(), victim: new Map() };
 let boardDrawnAt = 0;
 
 const BOARD_TOP = 16;
+const SECTION_GAP = 22;
+const HEADER_H = 24;
 const rowHeight = (scale: number) => 26 + 18 * scale;
 
-// top-right board on the game screen: who the audience currently suspects.
-// No backdrop — hardsub-style white text with a black outline, the leader
-// drawn bigger, everyone easing to their new spot when the standings change
-export function drawVoteBoard(ctx: CanvasRenderingContext2D) {
-  if (!started || isCutscenePlaying()) return;
-  const order = Object.entries(tally).sort(
+// one question's standings; returns the y below it and its widest row scale
+function drawBoardSection(
+  ctx: CanvasRenderingContext2D,
+  question: Question,
+  header: string,
+  top: number,
+  right: number,
+  ease: number,
+): { bottom: number; maxScale: number } {
+  const order = Object.entries(tallies[question]).sort(
     (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
   );
-  if (order.length === 0) return;
-
-  const now = performance.now();
-  const dt = boardDrawnAt ? Math.min((now - boardDrawnAt) / 1000, 0.1) : 0.1;
-  boardDrawnAt = now;
-  const ease = 1 - Math.exp(-dt * 8);
+  if (order.length === 0) return { bottom: top, maxScale: 0 };
 
   // the two highest distinct scores set the size tiers: everyone tied for
   // first draws full-size, everyone tied for second at half emphasis
   const first = order[0]![1];
   const second = order.find(([, count]) => count < first)?.[1] ?? 0;
 
+  ctx.font = "600 13px sans-serif";
+  ctx.letterSpacing = "2px"; // ignored by engines that don't support it
+  ctx.lineWidth = 3;
+  ctx.fillStyle = "#c7cfdd";
+  ctx.textAlign = "left";
+  const headerLeft = right - 200;
+  ctx.strokeText(header, headerLeft, top + HEADER_H / 2);
+  ctx.fillText(header, headerLeft, top + HEADER_H / 2);
+  ctx.letterSpacing = "0px";
+
   // lay out target positions, then ease every row toward its own
-  let targetY = BOARD_TOP;
+  let targetY = top + HEADER_H;
+  const rows = boardRows[question];
   const placed = order.map(([name, count]) => {
     const targetScale =
       count > 0 && count === first
@@ -209,21 +233,13 @@ export function drawVoteBoard(ctx: CanvasRenderingContext2D) {
         : count > 0 && count === second
           ? 0.5
           : 0;
-    const row = boardRows.get(name) ?? { y: targetY, scale: targetScale };
-    boardRows.set(name, row);
+    const row = rows.get(name) ?? { y: targetY, scale: targetScale };
+    rows.set(name, row);
     row.y += (targetY - row.y) * ease;
     row.scale += (targetScale - row.scale) * ease;
     targetY += rowHeight(targetScale);
     return { name, count, row };
   });
-
-  const right = window.innerWidth - 32;
-
-  ctx.save();
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = "#000";
 
   for (const { name, count, row } of placed) {
     const left = right - 200 - 20 * row.scale;
@@ -264,6 +280,52 @@ export function drawVoteBoard(ctx: CanvasRenderingContext2D) {
     ctx.fillText(String(count), right, centerY);
   }
 
+  return {
+    bottom: targetY,
+    maxScale: Math.max(...placed.map(({ row }) => row.scale)),
+  };
+}
+
+// top-right boards on the game screen: who the audience thinks the killer
+// will be, and who they think dies first. No backdrop — hardsub-style white
+// text with a black outline, leaders drawn bigger, rows easing to their new
+// spots when the standings change
+export function drawVoteBoard(ctx: CanvasRenderingContext2D) {
+  if (!started || isCutscenePlaying()) return;
+
+  const now = performance.now();
+  const dt = boardDrawnAt ? Math.min((now - boardDrawnAt) / 1000, 0.1) : 0.1;
+  boardDrawnAt = now;
+  const ease = 1 - Math.exp(-dt * 8);
+
+  const right = window.innerWidth - 32;
+
+  ctx.save();
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#000";
+
+  const killerBoard = drawBoardSection(
+    ctx,
+    "killer",
+    "THE KILLER?",
+    BOARD_TOP,
+    right,
+    ease,
+  );
+  const victimBoard = drawBoardSection(
+    ctx,
+    "victim",
+    "FIRST VICTIM?",
+    killerBoard.bottom + SECTION_GAP,
+    right,
+    ease,
+  );
+  if (killerBoard.bottom === BOARD_TOP) {
+    ctx.restore();
+    return; // no round data yet — nothing to hang the QR next to either
+  }
+
   // QR to the voting page, sitting just left of the standings
   const qr = voteQr();
   const qrSize = 138;
@@ -271,7 +333,7 @@ export function drawVoteBoard(ctx: CanvasRenderingContext2D) {
     right -
     20 -
     200 -
-    Math.max(...placed.map(({ row }) => row.scale)) * 20 -
+    Math.max(killerBoard.maxScale, victimBoard.maxScale) * 20 -
     qrSize;
   ctx.save();
   ctx.beginPath();

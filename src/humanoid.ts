@@ -1007,7 +1007,7 @@ export class Humanoid {
         // continuous sequence, so the camera never pops back to the sim
         // between the blow and the reveal
         if (target.dead) {
-          const reveal = claimRevealShots();
+          const reveal = claimRevealShots(this, target);
           if (reveal) shots.push(...reveal);
         }
         playCutscene(shots, { openFade: false });
@@ -1056,8 +1056,12 @@ export class Humanoid {
     if (this.dead) return;
     this.dead = true;
     // any death closes audience voting; the killer-reveal shots are folded
-    // into the stab cutscene itself, over in landStrike
-    reportKill();
+    // into the stab cutscene itself, over in landStrike. This fallback names
+    // whoever has a kill on their hands, and this humanoid as the victim.
+    reportKill(
+      world.find((other) => other.hasKilled)?.character.name ?? "",
+      this.character.name,
+    );
     // the collapse plays out and then stays put — its last frame is the corpse
     this.playAction("stabbed", this.facing);
     logAction(`${this.character.name} dies!`, this);

@@ -93,6 +93,19 @@
         margin: 0 0 18px;
       }
 
+      /* ---- the two questions ---- */
+      .section-h {
+        font-family: var(--type);
+        font-weight: 400;
+        font-size: 16px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--chalk);
+        border-left: 3px solid var(--blood);
+        padding-left: 10px;
+        margin: 22px 0 12px;
+      }
+
       /* ---- suspect dossier rows ---- */
       button.suspect {
         position: relative;
@@ -170,7 +183,9 @@
         background: color-mix(in srgb, var(--blood) 8%, var(--smoke));
       }
       @media (prefers-reduced-motion: no-preference) {
-        button.suspect.picked .stamp {
+        /* only the render right after a tap carries .slam — polling re-renders
+           recreate the stamp node, which would otherwise replay the thunk */
+        .stamp.slam {
           animation: slam 0.25s cubic-bezier(0.2, 1.6, 0.4, 1);
         }
         @keyframes slam {
