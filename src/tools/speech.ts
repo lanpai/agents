@@ -37,7 +37,7 @@ function speechLanguagesForAudience(
   const speakerRoom = roomOf(humanoid.x, humanoid.y);
   const audience = world
     .filter((other) => {
-      if (other === humanoid || other.dead) return false;
+      if (other === humanoid || other.dead || other.escaped) return false;
       const listenerRoom = roomOf(other.x, other.y);
       return (
         listenerRoom === speakerRoom ||

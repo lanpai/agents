@@ -29,6 +29,7 @@ export function initSelection(
       const point = screenToWorld(dragEnd);
       const hit = humanoids.find(
         (humanoid) =>
+          !humanoid.escaped &&
           Math.hypot(humanoid.x - point.x, humanoid.y - point.y) <= 10,
       );
       if (hit) console.log(hit);
@@ -42,6 +43,7 @@ export function initSelection(
     const maxY = Math.max(a.y, b.y);
     selected.clear();
     for (const humanoid of humanoids) {
+      if (humanoid.escaped) continue;
       if (
         humanoid.x >= minX &&
         humanoid.x <= maxX &&
@@ -63,6 +65,7 @@ export function initSelection(
 // the in-progress drag rectangle, drawn in screen space
 export function drawSelectionBox(ctx: CanvasRenderingContext2D) {
   for (const humanoid of selected.values()) {
+    if (humanoid.escaped) continue;
     const point = worldToScreen(humanoid);
     const size = 20 * camera.zoom;
     ctx.fillStyle = "rgba(121, 210, 255, 0.10)";

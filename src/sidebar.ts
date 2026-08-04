@@ -267,6 +267,9 @@ export function initSidebar(options: {
     const rows = [...options.humanoids]
       .sort((a, b) => b.anger - a.anger)
       .map((humanoid) => {
+        if (humanoid.escaped) {
+          return `<div style="margin-bottom:5px;color:#8b93a5">${esc(humanoid.character.name)} ↗ escaped</div>`;
+        }
         const tier = angerTier(humanoid.anger);
         const percent = Math.round(angerRatio(humanoid) * 100);
         const label = [
@@ -306,6 +309,12 @@ export function initSidebar(options: {
     }
     const blocks: string[] = [];
     for (const humanoid of selected) {
+      if (humanoid.escaped) {
+        blocks.push(
+          `<div style="margin-bottom:10px"><strong>${esc(humanoid.character.name)}</strong> — escaped the building</div>`,
+        );
+        continue;
+      }
       const carrying =
         humanoid.carrying.map((item) => item.name).join(", ") || "nothing";
       const lines = [

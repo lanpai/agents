@@ -8,6 +8,7 @@ import qrcode from "qrcode-generator";
 import { characterByName } from "./characters";
 import { isCutscenePlaying, type Shot } from "./cutscene";
 import type { Humanoid } from "./humanoid";
+import { ESCAPE_REVEAL_S, escapeRouteShot } from "./escapeRoute";
 
 const POLL_MS = 3000;
 
@@ -112,7 +113,7 @@ export function claimRevealShots(
     })
     .catch(() => {});
 
-  return [
+  const shots: Shot[] = [
     {
       x: killer.x,
       y: killer.y - 10,
@@ -133,6 +134,9 @@ export function claimRevealShots(
       sfx: "win", // the standings landing is the payoff for everyone who voted
     },
   ];
+  const escape = escapeRouteShot();
+  if (escape) shots.push(escape);
+  return shots;
 }
 
 // sprite icons for the board: the front-facing idle cell of each character's

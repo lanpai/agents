@@ -17,6 +17,7 @@ import {
   updateEmoteHolds,
 } from "./humanoid";
 import { drawHouse, findPath, ROOMS, roomByName, roomOf } from "./locations";
+import { activateEscapeRoute, drawEscapeRoute } from "./escapeRoute";
 import { Item } from "./interactables/types";
 import { drawLog } from "./log";
 import { executeTool } from "./tools";
@@ -93,6 +94,9 @@ if (freshGame) assignRoles(humanoids);
 // places saved items into rooms and carrying arrays; when no save exists,
 // the seeds declared in src/rooms remain
 loadItems(humanoids);
+// Older saves may already contain the first death but predate escape-route
+// persistence. Give those runs the same unlocked exit on their next load.
+if (humanoids.some((humanoid) => humanoid.dead)) activateEscapeRoute(humanoids);
 
 const save = () => {
   saveHumanoids(humanoids);
@@ -146,7 +150,9 @@ function introShots(): Shot[] {
         window.innerHeight / (maxY - minY),
       ) * 0.8,
   };
-  const cast = humanoids.filter((humanoid) => !humanoid.dead);
+  const cast = humanoids.filter(
+    (humanoid) => !humanoid.dead && !humanoid.escaped,
+  );
   const shots: Shot[] = [
     {
       x: wide.x,
@@ -220,6 +226,7 @@ function draw(now: number) {
   ctx.translate(-camera.x, -camera.y);
 
   drawHouse(ctx);
+  drawEscapeRoute(ctx, now);
 
   // painter's order: lower on screen draws in front
   const sortedHumanoids = [...humanoids].sort((a, b) => a.y - b.y);
@@ -367,6 +374,7 @@ function step(wallNow: number) {
       const frozen = frozenRooms(humanoids);
       const decisionBlocked = decisionBlockedRooms(humanoids);
       for (const humanoid of humanoids) {
+        if (humanoid.escaped) continue;
         const room = roomOf(humanoid.x, humanoid.y);
         if (decisionBlocked.has(room)) {
           // Stateful scenes still hold their personal decision schedules.
