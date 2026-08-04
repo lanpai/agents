@@ -19,6 +19,7 @@ import {
 } from "./humanoid";
 import { drawHouse, findPath, ROOMS, roomByName, roomOf } from "./locations";
 import { activateEscapeRoute, drawEscapeRoute } from "./escapeRoute";
+import { createItem } from "./interactables";
 import { Item } from "./interactables/types";
 import { drawLog } from "./log";
 import { executeTool } from "./tools";
@@ -137,6 +138,41 @@ initVoting(humanoids);
 // hints, and plays the complete reveal. With one living humanoid selected they
 // are the victim; with two selected the first is the attacker and second the
 // victim. Otherwise an existing killer (or the first living character) acts.
+function giveDebugKillerKnife(killer: Humanoid): boolean {
+  let knife = killer.carrying.find((item) => item.name === "Knife");
+
+  // Transfer the simulation's one real knife from whoever currently holds it.
+  if (!knife) {
+    for (const humanoid of humanoids) {
+      const index = humanoid.carrying.findIndex((item) => item.name === "Knife");
+      if (index < 0) continue;
+      knife = humanoid.carrying.splice(index, 1)[0];
+      break;
+    }
+  }
+
+  // Otherwise lift it from whichever room floor it is lying on.
+  if (!knife) {
+    for (const room of ROOMS) {
+      const index = room.interactables.findIndex(
+        (item) => item instanceof Item && item.name === "Knife",
+      );
+      if (index < 0) continue;
+      knife = room.interactables.splice(index, 1)[0] as Item;
+      break;
+    }
+  }
+
+  // A malformed/older save may have lost the unique knife entirely. The debug
+  // control should still create a representative real item rather than fake
+  // an armed animation with an empty inventory.
+  knife ??= createItem("Knife", killer.x, killer.y) ?? undefined;
+  if (!knife) return false;
+  knife.position = null;
+  if (!killer.carrying.includes(knife)) killer.carrying.push(knife);
+  return true;
+}
+
 function forceDebugKill(): string {
   if (isCutscenePlaying()) return " wait for the current cutscene";
   const living = humanoids.filter(
@@ -158,6 +194,7 @@ function forceDebugKill(): string {
     killer = living.find(isKiller) ?? living[0]!;
     victim = living.find((humanoid) => humanoid !== killer)!;
   }
+  if (!giveDebugKillerKnife(killer)) return " could not create the knife";
 
   // Put the attacker within arm's reach inside the victim's room. Calling
   // landStrike directly represents the instant a normal pursuit connects.
