@@ -377,8 +377,8 @@ function step(wallNow: number) {
           humanoid.nextMemoryAt += dt * 1000;
         }
         if (!frozen.has(room)) {
-          humanoid.update(dt, now, humanoids);
         }
+        humanoid.update(frozen.has(room) ? dt * 0.25 : dt, now, humanoids);
       }
       // after everyone has moved, ease apart anyone who still ended up
       // sharing a spot — including people whose room is frozen, since that is
