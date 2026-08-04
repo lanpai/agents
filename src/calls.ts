@@ -2,7 +2,7 @@
 
 export type AgentCall = {
   humanoid: string;
-  kind: "decision" | "memory" | "phonemes" | "warp" | "tts";
+  kind: "decision" | "memory" | "phonemes" | "warp" | "subtitle" | "tts";
   messages: string; // the user prompt sent
   tools: string[]; // tool names offered
   result: string[]; // tool calls returned (or the error)

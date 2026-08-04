@@ -31,18 +31,20 @@ export function initSidebar(options: {
     width: "380px",
     display: "none",
     overflowY: "auto",
-    background: "#fff",
-    borderLeft: "1px solid #000",
+    background: "#161a23",
+    color: "#d6dbe4",
+    borderLeft: "1px solid #2b3140",
     padding: "12px",
-    font: "12px monospace",
+    font: "12px sans-serif",
     zIndex: "10",
   });
 
   const buttonStyle = {
-    font: "14px monospace",
+    font: "14px sans-serif",
     padding: "4px 12px",
-    background: "#fff",
-    border: "1px solid #000",
+    background: "#232a36",
+    color: "#d6dbe4",
+    border: "1px solid #3d4557",
     borderRadius: "0",
     cursor: "pointer",
     marginRight: "8px",
@@ -213,7 +215,7 @@ export function initSidebar(options: {
       body.innerHTML = [
         `tools: ${esc(call.tools.join(", "))}`,
         `result: ${call.result.length > 0 ? esc(call.result.join("; ")) : "(pending)"}`,
-        `<pre style="white-space:pre-wrap;background:#f4f4f4;padding:6px;margin:6px 0">${esc(call.messages)}</pre>`,
+        `<pre style="white-space:pre-wrap;background:#0e1015;padding:6px;margin:6px 0">${esc(call.messages)}</pre>`,
       ].join("<br>");
       details.appendChild(body);
 

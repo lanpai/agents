@@ -1,5 +1,6 @@
 import { camera, screenToWorld, worldToScreen } from "./camera";
 import type { Humanoid } from "./humanoid";
+import { PALETTE } from "./theme";
 
 export const selected = new Set<Humanoid>();
 
@@ -64,9 +65,9 @@ export function drawSelectionBox(ctx: CanvasRenderingContext2D) {
   for (const humanoid of selected.values()) {
     const point = worldToScreen(humanoid);
     const size = 20 * camera.zoom;
-    ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+    ctx.fillStyle = "rgba(121, 210, 255, 0.10)";
     ctx.fillRect(point.x - size / 2, point.y - size / 2, size, size);
-    ctx.strokeStyle = "#000";
+    ctx.strokeStyle = PALETTE.selection;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.strokeRect(point.x - size / 2, point.y - size / 2, size, size);
@@ -78,9 +79,9 @@ export function drawSelectionBox(ctx: CanvasRenderingContext2D) {
   const y = Math.min(dragStart.y, dragEnd.y);
   const w = Math.abs(dragEnd.x - dragStart.x);
   const h = Math.abs(dragEnd.y - dragStart.y);
-  ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+  ctx.fillStyle = "rgba(121, 210, 255, 0.10)";
   ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = "#000";
+  ctx.strokeStyle = PALETTE.selection;
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   ctx.strokeRect(x, y, w, h);

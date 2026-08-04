@@ -1,33 +1,21 @@
 import type { Humanoid } from "../humanoid";
-import { Alcoholic } from "./alcoholic";
-import { Chainsmoker } from "./chainsmoker";
-import { DivineMadness } from "./divineMadness";
-import { Drunk } from "./drunk";
-import { Tipsy } from "./tipsy";
 import { Status } from "./types";
-import { Wasted } from "./wasted";
 
 type NonAbstractStatus = Pick<typeof Status, keyof typeof Status> &
   (new (...args: any[]) => Status);
 
-export function addStatusToHumanoid(
+export function addStatusToHumanoid<T extends NonAbstractStatus>(
   humanoid: Humanoid,
-  status: NonAbstractStatus,
-) {
+  status: T,
+): T["prototype"] {
   const newStatus = new status(humanoid);
   humanoid.statuses.set(newStatus.name, newStatus);
+  return newStatus;
 }
 
 // statuses are class instances, so saves store only the name (plus mutable
 // state) and rebuild the instance from this registry on load
-const STATUS_FACTORIES: Record<string, NonAbstractStatus> = {
-  Tipsy,
-  Drunk,
-  Wasted,
-  Alcoholic,
-  Chainsmoker,
-  DivineMadness,
-};
+const STATUS_FACTORIES: Record<string, NonAbstractStatus> = {};
 
 export function createStatus(name: string, owner: Humanoid): Status | null {
   const factory = STATUS_FACTORIES[name];

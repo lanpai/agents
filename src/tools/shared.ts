@@ -42,7 +42,10 @@ export function strike(
   const target = world.find(
     (other) => other !== humanoid && other.character.name === input.target,
   );
-  if (!target || roomOf(target.x, target.y) !== roomOf(humanoid.x, humanoid.y)) {
+  if (
+    !target ||
+    roomOf(target.x, target.y) !== roomOf(humanoid.x, humanoid.y)
+  ) {
     humanoid.remember(
       `You tried to ${verbBase} ${input.target}, but you don't see them here.`,
     );
@@ -91,6 +94,29 @@ export function strike(
     humanoid,
     target,
   );
+}
+
+// walk within arm's reach of a spot (e.g. an arcade cabinet), then run the
+// act; runs immediately when already close enough. Like a queued blow, any
+// new order given before arrival drops the queued act.
+export function approachAndUse(
+  humanoid: Humanoid,
+  spot: { x: number; y: number },
+  label: string,
+  act: () => void,
+) {
+  if (Math.hypot(spot.x - humanoid.x, spot.y - humanoid.y) <= TOUCH_RANGE) {
+    act();
+    return;
+  }
+  humanoid.target = { x: spot.x, y: spot.y };
+  humanoid.pendingPath = [];
+  humanoid.followName = null;
+  humanoid.pendingStrike = null;
+  humanoid.running = false;
+  humanoid.pendingUse = { x: spot.x, y: spot.y, act };
+  humanoid.remember(`You walk up to the ${label}.`);
+  logAction(`${humanoid.character.name} walks up to the ${label}`, humanoid);
 }
 
 export function follow(

@@ -1,20 +1,22 @@
-import { divineRight } from "./divineRight";
-import { eveningWhiskey } from "./eveningWhiskey";
-import { luckyInLove } from "./luckyInLove";
-import { oldFashioned } from "./oldFashioned";
-import { secondOpinion } from "./secondOpinion";
-import { partingShot } from "./partingShot";
-import { texasTea } from "./texasTea";
+import { cory } from "./cory";
+import { eric } from "./eric";
+import { hirai } from "./hirai";
+import { leland } from "./leland";
+import { tiffany } from "./tiffany";
+import { tyler } from "./tyler";
+import { yanghua } from "./yanghua";
+import { yp } from "./yp";
 import type { Character } from "./types";
 
 export const CHARACTERS: Character[] = [
-  divineRight,
-  eveningWhiskey,
-  luckyInLove,
-  oldFashioned,
-  secondOpinion,
-  partingShot,
-  texasTea,
+  cory,
+  leland,
+  eric,
+  hirai,
+  yp,
+  tiffany,
+  tyler,
+  yanghua,
 ];
 
 // characters carry functions, so saves store only the name and re-resolve here

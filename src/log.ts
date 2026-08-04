@@ -41,12 +41,15 @@ export function drawLog(ctx: CanvasRenderingContext2D, filter: Set<Humanoid>) {
   ).slice(-VISIBLE_LINES);
   if (visible.length === 0) return;
   ctx.save();
-  ctx.font = "14px monospace";
+  ctx.font = "14px sans-serif";
   ctx.textAlign = "left";
   let y = window.innerHeight - 10;
   for (let i = visible.length - 1; i >= 0; i--) {
     const age = visible.length - 1 - i;
-    ctx.fillStyle = `rgba(0, 0, 0, ${Math.max(0.15, 0.8 - age * 0.03)})`;
+    const alpha = Math.max(0.15, 0.85 - age * 0.03);
+    ctx.fillStyle = `rgba(0, 0, 0, ${alpha * 0.8})`;
+    ctx.fillText(visible[i]!.text, 9, y + 1); // drop shadow, for light floors
+    ctx.fillStyle = `rgba(228, 232, 240, ${alpha})`;
     ctx.fillText(visible[i]!.text, 8, y);
     y -= LINE_HEIGHT;
   }

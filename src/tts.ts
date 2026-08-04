@@ -24,7 +24,14 @@ type Line = {
   onEnd?: () => void;
 };
 
-const queue: Line[] = [];
+// a silent beat: an *action* bubble holding the screen like a spoken line
+type Beat = {
+  silentMs: number;
+  onStart?: () => void;
+  onEnd?: () => void;
+};
+
+const queue: (Line | Beat)[] = [];
 let queued = 0; // lines waiting or playing
 let playing = false;
 
@@ -92,35 +99,55 @@ export function speak(
   return true;
 }
 
-// Plays the queue one line at a time. Qwen failures before audio begins fall
-// back to the formant synthesizer; either path holds the line until playback
-// has ended so speech bubbles and room freezing stay synchronized.
+// queue a silent beat: it takes the same one-at-a-time slot as a spoken line
+// (so actions and dialogue never share the screen) but plays no audio.
+// Returns false when the queue is full, so the caller can fall back to an
+// instant bubble.
+export function queueBeat(
+  silentMs: number,
+  callbacks: { onStart?: () => void; onEnd?: () => void },
+): boolean {
+  if (queued >= MAX_QUEUE) return false;
+  queued++;
+  queue.push({ silentMs, ...callbacks });
+  void pump();
+  return true;
+}
+
+// Spoken lines prefer Qwen and fall back to the formant synthesizer. Both
+// paths hold the same queue used by silent beats, so dialogue and actions
+// never share the screen.
 async function pump() {
   if (playing) return;
-  const line = queue.shift();
-  if (!line) return;
+  const item = queue.shift();
+  if (!item) return;
   playing = true;
 
-  let started = false;
-  const startLine = () => {
-    if (started) return;
-    started = true;
-    line.onStart?.();
-  };
-  try {
-    if (!audioReady) throw new Error("audio not unlocked");
-    const audio = await audioReady;
+  if ("silentMs" in item) {
+    item.onStart?.();
+    await delay(item.silentMs);
+    item.onEnd?.();
+  } else {
+    let started = false;
+    const startLine = () => {
+      if (started) return;
+      started = true;
+      item.onStart?.();
+    };
     try {
-      await playQwen(line, audio, startLine);
+      if (!audioReady) throw new Error("audio not unlocked");
+      const audio = await audioReady;
+      try {
+        await playQwen(item, audio, startLine);
+      } catch {
+        await playFormant(item, audio, startLine);
+      }
     } catch {
-      await playFormant(line, audio, startLine);
+      startLine();
+      await delay(2000 + item.text.length * 60);
     }
-  } catch {
-    // No audio path: retain the old timed speech-bubble behavior.
-    startLine();
-    await delay(2000 + line.text.length * 60);
+    item.onEnd?.();
   }
-  line.onEnd?.();
   await delay(LINE_GAP_MS);
   queued--;
   playing = false;

@@ -1,4 +1,5 @@
 import type { Interactable } from "../interactables/types";
+import type { FloorMaterial } from "../theme";
 
 export class Room {
   name: string;
@@ -9,6 +10,7 @@ export class Room {
   h: number;
   doors: string[]; // adjacent rooms reachable through a door
   interactables: Interactable[];
+  floor: FloorMaterial; // purely cosmetic — nothing in the sim reads this
 
   constructor(options: {
     name: string;
@@ -19,6 +21,7 @@ export class Room {
     h: number;
     doors: string[];
     interactables?: Interactable[];
+    floor?: FloorMaterial;
   }) {
     this.name = options.name;
     this.promptName = options.promptName;
@@ -28,5 +31,6 @@ export class Room {
     this.h = options.h;
     this.doors = options.doors;
     this.interactables = options.interactables ?? [];
+    this.floor = options.floor ?? "concrete";
   }
 }

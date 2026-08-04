@@ -2,7 +2,6 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { Humanoid } from "../humanoid";
 import { findPath } from "./find_path";
 import { pickUp } from "./pick_up";
-import { punch } from "./punch";
 import { push } from "./push";
 import { runTo } from "./run_to";
 import { say } from "./say";
@@ -26,7 +25,6 @@ export const BASIC_SIM_TOOLS: SimTool[] = [
   pickUp,
   drop,
   push,
-  punch,
   standStill,
   wait,
   drink,

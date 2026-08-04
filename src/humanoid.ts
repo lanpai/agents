@@ -5,6 +5,7 @@ import {
   findPath,
   roomByName,
   roomOf,
+  ROOMS,
   wrapText,
 } from "./locations";
 import type { Item } from "./interactables/types";
@@ -15,11 +16,13 @@ import {
   focusCameraOnSpeaker,
   isCameraAutoFollowing,
 } from "./camera";
-import { speak } from "./tts";
+import { queueBeat, speak } from "./tts";
+import { playCutscene, type Shot } from "./cutscene";
+import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
-import type { Character } from "./characters/types";
+import { PALETTE, silhouette, mulberry32, hashSeed } from "./theme";
+import type { Character, SpriteSheet } from "./characters/types";
 import type { Status } from "./statuses/types";
-import { DivineMadness } from "./statuses/divineMadness";
 
 export const UNITS_PER_FOOT = 10;
 
@@ -58,12 +61,135 @@ const HOP_MAX_TILT = 0.3;
 const ARRIVE_DISTANCE = 2;
 const FOLLOW_DISTANCE = 20;
 const PERSONAL_SPACE = 14; // a destination this close to someone standing there is taken
+// how close two bodies may get before they're pushed apart. Kept under
+// TOUCH_RANGE so a fighter can still reach the person they're shoving past.
+const BODY_RADIUS = 7;
+const SEPARATION = BODY_RADIUS * 2;
+// how much of an overlap is corrected per frame — under 1 so the correction
+// eases out instead of snapping, which reads as a shove rather than a teleport
+const SEPARATION_RESPONSE = 0.35;
+// a walker starts leaning around anyone inside this radius, so bodies part
+// before they touch instead of grinding through each other
+const AVOID_RADIUS = 26;
+const AVOID_STRENGTH = 1.1;
 const MEMORY_LIMIT = 16;
 const UNCONSOLIDATED_LIMIT = 40;
 const HEARD_REACTION_MS = 1500;
+// how long an *action* bubble holds its slot on screen, like a spoken line
+const EMOTE_MS_BASE = 1800;
+const EMOTE_MS_PER_CHAR = 50;
+// how long a walker must actually stand still before the idle (front) row
+// takes over — waypoint handoffs (e.g. doorways) idle for a single frame,
+// and snapping to front for that frame reads as a flicker
+const IDLE_GRACE_S = 0.2;
+// the pool under a corpse seeps out over a few seconds and then holds
+const BLOOD_GROW_S = 4;
+const BLOOD_RADIUS = 16;
 
-const sprite = new Image();
-sprite.src = "/humanoid.png";
+// one Image per sprite path, shared across every humanoid using it
+const spriteCache = new Map<string, HTMLImageElement>();
+const SPRITE_SIZE = 36; // world-unit footprint every sprite is drawn at
+
+function spriteFor(src: string): HTMLImageElement {
+  let image = spriteCache.get(src);
+  if (!image) {
+    image = new Image();
+    image.src = src;
+    spriteCache.set(src, image);
+  }
+  return image;
+}
+
+// sheet rows, in the order scripts/make_sprite_sheet.py lays them out. Front
+// doubles as the idle animation: it is what plays whenever nobody is walking.
+const FACINGS = ["front", "back", "left", "right"] as const;
+export type Facing = (typeof FACINGS)[number];
+const FACING_ROW: Record<Facing, number> = {
+  front: 0,
+  back: 1,
+  left: 2,
+  right: 3,
+};
+
+// which way a velocity points; the dominant axis wins, and down is front
+function facingOf(vx: number, vy: number): Facing {
+  if (Math.abs(vx) > Math.abs(vy)) return vx > 0 ? "right" : "left";
+  return vy > 0 ? "front" : "back";
+}
+
+// dark clothing on a dark floor loses its edge, so every sprite gets a soft
+// halo of its own shape behind it — reads as ceiling light catching the figure
+const rimCache = new Map<string, HTMLCanvasElement>();
+
+function rimFor(
+  src: string,
+  image: HTMLImageElement,
+): HTMLCanvasElement | null {
+  const cached = rimCache.get(src);
+  if (cached) return cached;
+  if (!image.complete || image.naturalWidth === 0) return null; // retry next frame
+  const rim = silhouette(image, PALETTE.rim);
+  rimCache.set(src, rim);
+  return rim;
+}
+
+const RIM_OFFSETS = [
+  [-1, 0],
+  [1, 0],
+  [0, -1],
+  [0, 1],
+] as const;
+
+// where the feet sit inside a cell, and where that lands relative to the
+// humanoid's own origin — matched to FEET_ROW in scripts/make_sprite_sheet.py.
+// Placing every sheet by its ground line is what lets cells of different sizes
+// share one standing position.
+const FEET_ROW = 0.94;
+const FEET_OFFSET = 12;
+
+// halo + one cell of a sheet, drawn around the humanoid's own origin
+function drawRimmedSprite(
+  ctx: CanvasRenderingContext2D,
+  sheet: SpriteSheet,
+  image: HTMLImageElement,
+  facing: Facing,
+  frame: number,
+) {
+  const sx = frame * sheet.cell;
+  const sy = FACING_ROW[facing] * sheet.cell;
+  const x = -sheet.size / 2;
+  const y = FEET_OFFSET - FEET_ROW * sheet.size;
+  const rim = rimFor(sheet.src, image);
+  if (rim) {
+    ctx.save();
+    ctx.globalAlpha = ctx.globalAlpha * 0.32;
+    for (const [dx, dy] of RIM_OFFSETS) {
+      ctx.drawImage(
+        rim,
+        sx,
+        sy,
+        sheet.cell,
+        sheet.cell,
+        x + dx,
+        y + dy,
+        sheet.size,
+        sheet.size,
+      );
+    }
+    ctx.restore();
+  }
+  ctx.drawImage(
+    image,
+    sx,
+    sy,
+    sheet.cell,
+    sheet.cell,
+    x,
+    y,
+    sheet.size,
+    sheet.size,
+  );
+}
 
 // remember() an event for every living humanoid in the source's room, except
 // the source themself; pass a function to vary the text per viewer
@@ -81,13 +207,19 @@ export function broadcastToRoom(
 }
 
 // rooms where time currently stands still: any room holding a humanoid who
-// is mid-decision, whose voice line is queued/playing, or whose emote the
-// camera hasn't witnessed yet
+// is mid-decision, whose voice line is queued/playing, whose emote the camera
+// hasn't witnessed yet, or who is mid-swing — or mid-collapse, which is the one
+// thing the dead can still hold a room for
 export function frozenRooms(world: Humanoid[]) {
   const rooms = new Set<ReturnType<typeof roomOf>>();
   for (const humanoid of world) {
-    if (humanoid.dead) continue;
-    if (humanoid.thinking || humanoid.speaking || humanoid.emoteHold) {
+    if (humanoid.dead && !isPlayingAction(humanoid)) continue;
+    if (
+      humanoid.thinking ||
+      humanoid.speaking ||
+      humanoid.emoteHold ||
+      isPlayingAction(humanoid)
+    ) {
       rooms.add(roomOf(humanoid.x, humanoid.y));
     }
   }
@@ -101,6 +233,94 @@ export function frozenRooms(world: Humanoid[]) {
 const EMOTE_SEEN_SECONDS = 0.5;
 const EMOTE_HOLD_MAX_SECONDS = 5;
 const EMOTE_SEEN_DISTANCE = 40; // camera center this close = the actor is framed
+
+// how long a one-shot runs end to end
+function actionDuration(humanoid: Humanoid): number {
+  const sheet = humanoid.character.sprite[humanoid.action!.kind];
+  return sheet.frames * sheet.frameMs;
+}
+
+// one-shots tick on wall time: their own room is frozen while they play, so a
+// sim-time clock would never advance and the animation would never end. The
+// dead keep their last frame — that collapsed body *is* the corpse.
+export function updateActions(world: Humanoid[], dt: number) {
+  for (const humanoid of world) {
+    // the blood seeps on wall time too: the room a death happens in is frozen
+    // for the reaction, and a sim clock would leave the floor clean through it
+    if (humanoid.dead) humanoid.deadFor += dt;
+    if (!humanoid.action) continue;
+    humanoid.action.t += dt * 1000;
+    if (humanoid.action.t >= actionDuration(humanoid) && !humanoid.dead) {
+      humanoid.action = null;
+    }
+  }
+}
+
+// true when a point is inside some room's floor, rather than in a wall or
+// outside the building. roomOf can't answer this — it falls back to the
+// nearest room for points that are in neither.
+function onFloor(x: number, y: number): boolean {
+  return ROOMS.some(
+    (room) =>
+      x >= room.x &&
+      x <= room.x + room.w &&
+      y >= room.y &&
+      y <= room.y + room.h,
+  );
+}
+
+// steering stops bodies from walking into each other; this is the backstop for
+// when they end up sharing a spot anyway — someone spawning on a neighbour, a
+// corridor too narrow to lean out of, a walker pinned against a corpse. Each
+// overlapping pair is eased apart along the line between them.
+export function separateBodies(world: Humanoid[]) {
+  for (let i = 0; i < world.length; i++) {
+    for (let j = i + 1; j < world.length; j++) {
+      const a = world[i]!;
+      const b = world[j]!;
+      // two corpses lie where they fell; nothing left to push them
+      if (a.dead && b.dead) continue;
+      let dx = b.x - a.x;
+      let dy = b.y - a.y;
+      let distance = Math.hypot(dx, dy);
+      if (distance >= SEPARATION) continue;
+      if (distance < 0.001) {
+        // exactly stacked, so there's no line to push along: pick one off the
+        // pair's position in the world list, which is stable frame to frame
+        const angle = ((i * 7 + j) % 16) * (Math.PI / 8);
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+        distance = 0.001;
+      }
+      const nudge = ((SEPARATION - distance) / distance) * SEPARATION_RESPONSE;
+      // the dead are immovable, so a body pushes the living clear of it while
+      // staying put itself; between two living, each gives half the ground
+      const aShare = a.dead ? 0 : b.dead ? 1 : 0.5;
+      const bShare = b.dead ? 0 : a.dead ? 1 : 0.5;
+      // a push that would put someone in a wall is dropped rather than
+      // clamped — better to briefly overlap than to stand inside the masonry
+      const ax = a.x - dx * nudge * aShare;
+      const ay = a.y - dy * nudge * aShare;
+      if (aShare > 0 && onFloor(ax, ay)) {
+        a.x = ax;
+        a.y = ay;
+      }
+      const bx = b.x + dx * nudge * bShare;
+      const by = b.y + dy * nudge * bShare;
+      if (bShare > 0 && onFloor(bx, by)) {
+        b.x = bx;
+        b.y = by;
+      }
+    }
+  }
+}
+
+// true while a one-shot still has frames to show — the room waits for it
+export function isPlayingAction(humanoid: Humanoid): boolean {
+  return (
+    humanoid.action !== null && humanoid.action.t < actionDuration(humanoid)
+  );
+}
 
 export function updateEmoteHolds(world: Humanoid[], dt: number) {
   for (const humanoid of world) {
@@ -127,19 +347,15 @@ export function updateEmoteHolds(world: Humanoid[], dt: number) {
 // speech filters contributed by statuses (e.g. Divine Madness): the first
 // status offering a warp wins. Outgoing rewrites what the world hears when
 // this humanoid speaks; incoming rewrites what this humanoid hears
-function outgoingSpeechWarp(speaker: Humanoid) {
-  for (const status of speaker.statuses.values()) {
-    if (status instanceof DivineMadness)
-      return status.warpOutgoingSpeech.bind(status);
-  }
+function outgoingSpeechWarp(
+  speaker: Humanoid,
+): ((text: string) => Promise<string>) | null {
   return null;
 }
 
-function incomingSpeechWarp(hearer: Humanoid) {
-  for (const status of hearer.statuses.values()) {
-    if (status instanceof DivineMadness)
-      return status.warpIncomingSpeech.bind(status);
-  }
+function incomingSpeechWarp(
+  hearer: Humanoid,
+): ((text: string, speaker: string) => Promise<string>) | null {
   return null;
 }
 
@@ -189,6 +405,13 @@ export class Humanoid {
   vy = 0;
   hopT = 0; // 0 = grounded, (0,1) = mid-hop arc
   hopTilt = 0;
+  facing: Facing = "front"; // which row of the walk sheet is playing
+  animT = 0; // ms into the walk cycle; runs on sim time, so it stops when a room freezes
+  stillFor = IDLE_GRACE_S; // seconds since the last movement, for the idle fallback
+  // a one-shot playing over the walk loop: swinging a blade, or going down
+  // under one. It runs on wall time (see updateActions) because the room it
+  // happens in is frozen for exactly as long as it lasts.
+  action: { kind: "stab" | "stabbed"; facing: Facing; t: number } | null = null;
 
   statuses = new Map<string, Status>();
 
@@ -202,6 +425,7 @@ export class Humanoid {
   };
   stamina = 100;
   dead = false;
+  deadFor = 0; // seconds since dying — drives how far the blood has spread
   running = false;
   carrying: Item[] = [];
 
@@ -216,6 +440,9 @@ export class Humanoid {
     damage: number;
     verb: StrikeVerb;
   } | null = null;
+  // an interaction queued from too far away (e.g. playing an arcade cabinet):
+  // update() runs the act the moment the spot is within arm's reach
+  pendingUse: { x: number; y: number; act: () => void } | null = null;
   speech: { text: string; until: number } | null = null;
   emote: { text: string } | null = null; // *action* bubble, lives as long as its hold
   // freezes the room until the camera has watched the emote (wall-time seconds)
@@ -243,13 +470,40 @@ export class Humanoid {
   }
 
   isMoving(): boolean {
-    return this.vx !== 0 || this.vy !== 0;
+    return this.vx !== 0 || this.vy !== 0 || this.pendingPath.length > 0;
   }
 
   // a small *action* bubble over the head for non-speech, non-movement acts;
   // like talking it freezes the room, and both the freeze and the bubble last
   // until the camera has seen the act
   showEmote(text: string) {
+    // the bubble displays *text*, and the subtitle keys on the display form;
+    // requesting at queue time gives the translation a head start
+    requestSubtitle(
+      this.character.name,
+      roomOf(this.x, this.y).name,
+      `*${text}*`,
+    );
+    // actions share the spoken-line queue: they hold the screen one at a
+    // time, so an action in one room can't talk over dialogue in another
+    const beat = queueBeat(EMOTE_MS_BASE + text.length * EMOTE_MS_PER_CHAR, {
+      onStart: () => {
+        if (this.dead) return;
+        this.emote = { text };
+        // an action is a shot of its own: cut to it like a spoken line
+        focusCameraOnSpeaker(this);
+      },
+      onEnd: () => {
+        this.speaking = false;
+        if (this.emote?.text === text) this.emote = null;
+      },
+    });
+    if (beat) {
+      // freezes the room from decision to bubble-end, exactly like speech
+      this.speaking = true;
+      return;
+    }
+    // queue full: the old instant bubble, held until the camera has seen it
     this.emote = { text };
     this.emoteHold = { seenFor: 0, heldFor: 0 };
   }
@@ -257,6 +511,52 @@ export class Humanoid {
   // both legs at 100% -> 1, one dead leg -> 0.5, both dead -> 0
   legSpeedFactor(): number {
     return (this.body["left leg"] + this.body["right leg"]) / 200;
+  }
+
+  // bend the current heading away from anyone standing in the way, keeping the
+  // speed intact so a detour costs time rather than pace. Whoever is closest
+  // decides the side to pass on, so two people meeting head-on don't mirror
+  // each other into a deadlock.
+  private steerAroundOthers(
+    world: Humanoid[],
+    speed: number,
+    toDestination: number,
+  ) {
+    // on the last stride the destination wins: veering here would have them
+    // circling the spot they came to stand on
+    if (toDestination <= AVOID_RADIUS * 0.5) return;
+    const headingX = this.vx / speed;
+    const headingY = this.vy / speed;
+    let steerX = 0;
+    let steerY = 0;
+    for (const other of world) {
+      if (other === this) continue;
+      // the one they're closing on isn't an obstacle — it's the point. Veering
+      // off them would have the follower orbit their heels, and the attacker
+      // circle the person they mean to hit.
+      if (other.character.name === this.pendingStrike?.target) continue;
+      if (other.character.name === this.followName) continue;
+      const dx = other.x - this.x;
+      const dy = other.y - this.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance >= AVOID_RADIUS || distance < 0.001) continue;
+      // only what's ahead is in the way; anyone behind or abreast is passed
+      const ahead = (dx * headingX + dy * headingY) / distance;
+      if (ahead <= 0.2) continue;
+      // sidestep perpendicular to the heading, away from the side they're on
+      const cross = headingX * dy - headingY * dx;
+      const side = cross >= 0 ? -1 : 1;
+      const urgency = (1 - distance / AVOID_RADIUS) * ahead;
+      steerX += -headingY * side * urgency;
+      steerY += headingX * side * urgency;
+    }
+    if (steerX === 0 && steerY === 0) return;
+    const blendX = headingX + steerX * AVOID_STRENGTH;
+    const blendY = headingY + steerY * AVOID_STRENGTH;
+    const length = Math.hypot(blendX, blendY);
+    if (length < 0.001) return;
+    this.vx = (blendX / length) * speed;
+    this.vy = (blendY / length) * speed;
   }
 
   say(
@@ -304,6 +604,9 @@ export class Humanoid {
     verb: "say" | "yell",
     delivery?: string,
   ) {
+    // translation starts while the line waits in the TTS queue, so the
+    // subtitle is usually ready the moment the bubble appears
+    requestSubtitle(this.character.name, roomOf(this.x, this.y).name, text);
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
     const spoken = speak(text, {
@@ -379,6 +682,7 @@ export class Humanoid {
     this.pendingPath = rest;
     this.followName = null;
     this.pendingStrike = null; // a new order drops any queued blow
+    this.pendingUse = null;
     this.running = running;
     const gait = running ? "running" : "walking";
     this.remember(`You started ${gait} to ${roomPromptName}.`);
@@ -390,6 +694,7 @@ export class Humanoid {
     this.target = null;
     this.pendingPath = [];
     this.pendingStrike = null; // a new order drops any queued blow
+    this.pendingUse = null;
     this.running = running;
     const gait = running ? "running" : "walking";
     this.remember(`You started ${gait} toward ${name}.`);
@@ -419,6 +724,7 @@ export class Humanoid {
     this.pendingPath = [];
     this.followName = null;
     this.pendingStrike = null; // dropping the pursuit drops the queued blow
+    this.pendingUse = null;
     this.running = false;
   }
 
@@ -451,17 +757,48 @@ export class Humanoid {
       witness.nextThinkAt = Math.min(witness.nextThinkAt, now + 500);
     }
 
+    // both fighters turn to face each other for the exchange. Punches have no
+    // art of their own, so they borrow the blade's swing.
+    this.playAction("stab", facingOf(target.x - this.x, target.y - this.y));
+    target.facing = facingOf(this.x - target.x, this.y - target.y);
+
     target.takeDamage(part, damage, world, now);
     this.remember(`You ${verb.past} ${target.character.name}'s ${part}.`);
     if (!target.dead) {
       target.remember(`${this.character.name} ${verb.past} your ${part}!`);
       target.nextThinkAt = Math.min(target.nextThinkAt, now + 500);
     }
-    logEmote(
-      `${this.character.name} ${verb.present} ${target.character.name}'s ${part}`,
-      this,
-      target,
-    );
+    // logEmote(
+    //   `${this.character.name} ${verb.present} ${target.character.name}'s ${part}`,
+    //   this,
+    //   target,
+    // );
+
+    // a stab is a scene: every room freezes and the camera cuts in tight
+    // under letterbox while the swing plays out; a kill earns a second shot
+    // lingering on the body. No fade from black — the blow is the cut.
+    if (verb.present === "stabs") {
+      const stab = this.character.sprite.stab;
+      const shots: Shot[] = [
+        {
+          x: (this.x + target.x) / 2,
+          y: (this.y + target.y) / 2 - 10,
+          zoomFrom: 4.5,
+          zoomTo: 6,
+          duration: (stab.frames * stab.frameMs + 800) / 1000,
+        },
+      ];
+      // if (target.dead) {
+      //   shots.push({
+      //     x: target.x,
+      //     y: target.y - 10,
+      //     zoomFrom: 5.5,
+      //     zoomTo: 6.2,
+      //     duration: 2.4,
+      //   });
+      // }
+      playCutscene(shots, { openFade: false });
+    }
   }
 
   takeDamage(part: BodyPart, amount: number, world: Humanoid[], now: number) {
@@ -472,9 +809,16 @@ export class Humanoid {
     }
   }
 
+  // start a one-shot over the walk loop; it holds the room until it finishes
+  playAction(kind: "stab" | "stabbed", facing: Facing) {
+    this.action = { kind, facing, t: 0 };
+  }
+
   die(world: Humanoid[], now: number) {
     if (this.dead) return;
     this.dead = true;
+    // the collapse plays out and then stays put — its last frame is the corpse
+    this.playAction("stabbed", this.facing);
     logAction(`${this.character.name} dies!`, this);
     this.vx = 0;
     this.vy = 0;
@@ -482,6 +826,7 @@ export class Humanoid {
     this.pendingPath = [];
     this.followName = null;
     this.pendingStrike = null;
+    this.pendingUse = null;
     this.speech = null;
     const myRoom = roomOf(this.x, this.y);
     // whatever they carried spills onto the body
@@ -591,6 +936,7 @@ export class Humanoid {
         if (distance > destination.stopDistance) {
           this.vx = (dx / distance) * speed;
           this.vy = (dy / distance) * speed;
+          this.steerAroundOthers(world, speed, distance);
         } else if (this.target) {
           const next = this.pendingPath.shift();
           if (next) {
@@ -616,6 +962,17 @@ export class Humanoid {
     }
 
     const moving = this.isMoving();
+    // the walk cycle runs at the source video's tempo whether walking or idling
+    // — standing still just means the front row keeps playing
+    const sheet = this.character.sprite.walk;
+    this.animT = (this.animT + dt * 1000) % (sheet.frames * sheet.frameMs);
+    if (moving) {
+      this.facing = facingOf(this.vx, this.vy);
+      this.stillFor = 0;
+    } else {
+      this.stillFor += dt;
+    }
+
     // advance the hop cycle while moving; if stopped mid-hop, finish the arc to land
     if (moving || this.hopT > 0) {
       if (this.hopT === 0)
@@ -644,7 +1001,28 @@ export class Humanoid {
         this.pendingPath = [];
         this.followName = null;
         this.running = false;
-        this.landStrike(target, pending.part, pending.damage, pending.verb, world, now);
+        this.landStrike(
+          target,
+          pending.part,
+          pending.damage,
+          pending.verb,
+          world,
+          now,
+        );
+      }
+    }
+
+    // a queued interaction fires the moment its spot is within arm's reach
+    if (this.pendingUse) {
+      const use = this.pendingUse;
+      if (Math.hypot(use.x - this.x, use.y - this.y) <= TOUCH_RANGE) {
+        // stop silently — the act's own memory explains the halt
+        this.pendingUse = null;
+        this.target = null;
+        this.pendingPath = [];
+        this.followName = null;
+        this.running = false;
+        use.act();
       }
     }
 
@@ -682,23 +1060,49 @@ export class Humanoid {
     }
   }
 
-  draw(ctx: CanvasRenderingContext2D) {
-    if (!sprite.complete || sprite.naturalWidth === 0) return;
-    ctx.imageSmoothingEnabled = false;
-    if (this.dead) {
-      ctx.save();
-      ctx.translate(Math.round(this.x), Math.round(this.y));
-      ctx.rotate(Math.PI / 2);
-      ctx.globalAlpha = 0.5;
-      ctx.drawImage(sprite, -8, -8);
-      ctx.restore();
-      return;
+  // which sheet, row and column to show right now: a one-shot wins while it
+  // plays, otherwise the walk loop — whose front row doubles as the idle
+  private pose(): { sheet: SpriteSheet; facing: Facing; frame: number } {
+    if (this.action) {
+      const sheet = this.character.sprite[this.action.kind];
+      const frame = Math.min(
+        Math.floor(this.action.t / sheet.frameMs),
+        sheet.frames - 1, // the dead hold the last frame forever
+      );
+      return { sheet, facing: this.action.facing, frame };
     }
-    const arc = Math.sin(Math.PI * this.hopT);
+    const sheet = this.character.sprite.walk;
+    // standing still means the front row, held on its first pose — but only
+    // after a real stop: waypoint handoffs idle for one frame mid-walk
+    const walking = this.isMoving() || this.stillFor < IDLE_GRACE_S;
+    return {
+      sheet,
+      facing: walking ? this.facing : "front",
+      frame: walking
+        ? Math.floor(this.animT / sheet.frameMs) % sheet.frames
+        : 0,
+    };
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    const { sheet, facing, frame } = this.pose();
+    const sprite = spriteFor(sheet.src);
+    if (!sprite.complete || sprite.naturalWidth === 0) return;
+    // nearest-neighbour picks different source pixels every frame while the
+    // sprite is being minified, which reads as shimmer on fine detail — so
+    // filter when shrinking the cell and stay crisp once it's blown up
+    ctx.imageSmoothingEnabled = sheet.size * camera.zoom < sheet.cell;
+    ctx.imageSmoothingQuality = "high";
+    // snap to whole screen pixels, not whole world units: at high zoom one world
+    // unit is several pixels, so rounding in world space makes walking judder
+    const snap = (value: number) =>
+      Math.round(value * camera.zoom) / camera.zoom;
+    // the collapse animation lays the body down itself — no rotation needed
+    const arc = this.dead ? 0 : Math.sin(Math.PI * this.hopT);
     ctx.save();
-    ctx.translate(Math.round(this.x), Math.round(this.y) - arc * HOP_HEIGHT);
-    ctx.rotate(arc * this.hopTilt);
-    ctx.drawImage(sprite, -8, -8);
+    ctx.translate(snap(this.x), snap(this.y - arc * HOP_HEIGHT));
+    if (!this.dead) ctx.rotate(arc * this.hopTilt);
+    drawRimmedSprite(ctx, sheet, sprite, facing, frame);
     ctx.restore();
   }
 
@@ -706,21 +1110,101 @@ export class Humanoid {
     ctx.save();
     ctx.translate(this.x, this.y);
 
+    // the pool goes down first, so the body's own shadow sits on top of it
+    if (this.dead) this.drawBlood(ctx);
+
+    // contact shadow: it stays on the floor while a hop lifts the sprite, and
+    // shrinks with the height of the arc
+    const arc = this.dead ? 0 : Math.sin(Math.PI * this.hopT);
+    ctx.save();
+    ctx.beginPath();
+    // y sits at the sprite's feet: it is drawn from -SPRITE_SIZE/2 - 4 downward
+    ctx.ellipse(0, 12, 8 - arc, 3 - arc * 0.5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = PALETTE.bodyShadow;
+    ctx.fill();
+    ctx.restore();
+
     ctx.textAlign = "center";
-    ctx.font = "9px monospace";
-    ctx.fillStyle = "#999";
-    ctx.fillText(
-      this.dead ? `${this.character.name} (dead)` : this.character.name,
-      0,
-      19,
-    );
+    ctx.font = "9px sans-serif";
+    ctx.fillStyle = PALETTE.nameText;
     if (this.thinking) {
       const dots = ".".repeat(1 + (Math.floor(now / 400) % 3));
-      const nameWidth = ctx.measureText(this.character.name).width;
-      ctx.textAlign = "left";
-      ctx.fillText(dots, nameWidth / 2 + 2, 19);
-      ctx.textAlign = "center";
+      ctx.fillText(dots, 0, 19);
     }
+
+    ctx.restore();
+  }
+
+  // the blood on the floor under a corpse, drawn around the local origin (the
+  // feet). Its shape is seeded off the name, so a given body always bleeds the
+  // same way across frames and reloads; only how far it has spread changes.
+  private drawBlood(ctx: CanvasRenderingContext2D) {
+    const spread = Math.min(1, this.deadFor / BLOOD_GROW_S);
+    if (spread <= 0) return;
+    const eased = 1 - Math.pow(1 - spread, 3); // fast at first, then creeping
+    const random = mulberry32(hashSeed(this.character.name));
+
+    ctx.save();
+    ctx.translate(0, 10); // the ground line, level with the contact shadow
+    ctx.scale(1, 0.5); // seen from above at this pitch, a pool reads squashed
+
+    // one path of overlapping discs, filled once so they merge into a single
+    // ragged body rather than reading as separate blobs
+    ctx.beginPath();
+    for (let i = 0; i < 7; i++) {
+      const angle = random() * Math.PI * 2;
+      const distance = random() * BLOOD_RADIUS * 0.5 * eased;
+      const radius = BLOOD_RADIUS * (0.35 + random() * 0.5) * eased;
+      ctx.moveTo(
+        Math.cos(angle) * distance + radius,
+        Math.sin(angle) * distance,
+      );
+      ctx.arc(
+        Math.cos(angle) * distance,
+        Math.sin(angle) * distance,
+        radius,
+        0,
+        Math.PI * 2,
+      );
+    }
+    ctx.fillStyle = PALETTE.blood;
+    ctx.fill();
+
+    // a wet highlight off-centre, so the pool doesn't read as flat paint
+    ctx.beginPath();
+    ctx.ellipse(
+      -BLOOD_RADIUS * 0.2,
+      -BLOOD_RADIUS * 0.15,
+      BLOOD_RADIUS * 0.3 * eased,
+      BLOOD_RADIUS * 0.2 * eased,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fillStyle = PALETTE.bloodSheen;
+    ctx.fill();
+
+    // spatter thrown clear of the pool on impact: there from the first frame,
+    // so the floor reacts the moment they drop
+    ctx.beginPath();
+    for (let i = 0; i < 9; i++) {
+      const angle = random() * Math.PI * 2;
+      const distance = BLOOD_RADIUS * (0.7 + random() * 1.1);
+      const radius = 0.6 + random() * 1.4;
+      ctx.moveTo(
+        Math.cos(angle) * distance + radius,
+        Math.sin(angle) * distance,
+      );
+      ctx.arc(
+        Math.cos(angle) * distance,
+        Math.sin(angle) * distance,
+        radius,
+        0,
+        Math.PI * 2,
+      );
+    }
+    ctx.fillStyle = PALETTE.bloodSpatter;
+    ctx.fill();
 
     ctx.restore();
   }
@@ -728,21 +1212,24 @@ export class Humanoid {
   // name label + speech bubble, drawn in world space so they scale with zoom
   drawOverlay(ctx: CanvasRenderingContext2D) {
     ctx.save();
-    ctx.translate(this.x, this.y);
+    ctx.translate(this.x, this.y - 8);
 
     // bubbles stack upward from just above the head: speech first, then the
     // action emote on top when both are showing
     let stackBottom = -14;
     if (this.speech) {
       stackBottom = this.drawBubble(ctx, this.speech.text, stackBottom, {
-        font: "8px monospace",
+        font: "8px sans-serif",
         lineHeight: 10,
+        caret: true,
       });
     }
     if (this.emote) {
+      // the caret marks the bottom-most bubble — the one pointing at the head
       this.drawBubble(ctx, `*${this.emote.text}*`, stackBottom, {
-        font: "8px monospace",
+        font: "8px sans-serif",
         lineHeight: 10,
+        caret: !this.speech,
       });
     }
 
@@ -755,8 +1242,9 @@ export class Humanoid {
     ctx: CanvasRenderingContext2D,
     text: string,
     bottom: number,
-    style: { font: string; lineHeight: number },
+    style: { font: string; lineHeight: number; caret?: boolean },
   ): number {
+    bottom -= 6;
     ctx.textAlign = "center";
     ctx.font = style.font;
     const maxWidth = Math.max(60, (window.innerWidth - 80) / camera.zoom);
@@ -764,11 +1252,33 @@ export class Humanoid {
     const width = Math.max(...lines.map((line) => ctx.measureText(line).width));
     const boxHeight = lines.length * style.lineHeight + 3;
     const bubbleTop = bottom - boxHeight;
+    const left = -width / 2 - 5;
+    const right = width / 2 + 5;
+    const radius = 3;
+    const caretHalf = 3;
+    const caretDepth = 4;
+    // one path for box and caret so the border doesn't cross between them
+    ctx.beginPath();
+    ctx.moveTo(left + radius, bubbleTop);
+    ctx.lineTo(right - radius, bubbleTop);
+    ctx.quadraticCurveTo(right, bubbleTop, right, bubbleTop + radius);
+    ctx.lineTo(right, bottom - radius);
+    ctx.quadraticCurveTo(right, bottom, right - radius, bottom);
+    if (style.caret) {
+      ctx.lineTo(caretHalf, bottom);
+      ctx.lineTo(0, bottom + caretDepth);
+      ctx.lineTo(-caretHalf, bottom);
+    }
+    ctx.lineTo(left + radius, bottom);
+    ctx.quadraticCurveTo(left, bottom, left, bottom - radius);
+    ctx.lineTo(left, bubbleTop + radius);
+    ctx.quadraticCurveTo(left, bubbleTop, left + radius, bubbleTop);
+    ctx.closePath();
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = "#000";
     ctx.lineWidth = 1;
-    ctx.fillRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
-    ctx.strokeRect(-width / 2 - 5, bubbleTop, width + 10, boxHeight);
+    ctx.fill();
+    ctx.stroke();
     ctx.fillStyle = "#000";
     lines.forEach((line, i) => {
       ctx.fillText(

@@ -1,22 +1,12 @@
-import { texasTeasRoom } from "./bedrooms/texasTeasRoom";
-import { partingShotsRoom } from "./bedrooms/partingShotsRoom";
-import { bedroom6 } from "./bedrooms/bedroom6";
-import { bedroom7 } from "./bedrooms/bedroom7";
-import { bedroom8 } from "./bedrooms/bedroom8";
-import { diningRoom } from "./diningRoom";
-import { eveningWhiskeysRoom } from "./bedrooms/eveningWhiskeysRoom";
-import { foyer } from "./foyer";
+import { arcadeRoom } from "./arcadeRoom";
+import { downstairsWorkArea } from "./downstairsWorkArea";
+import { conferenceRoom } from "./conferenceRoom";
+import { gameRoom } from "./gameRoom";
 import { kitchen } from "./kitchen";
-import { library } from "./library";
-import { luckyInLoveAndOldFashionedsRoom } from "./bedrooms/luckyInLoveAndOldFashionedsRoom";
-import { northHall } from "./northHall";
-import { parlor } from "./parlor";
-import { porch } from "./porch";
-import { refrigeratorRoom } from "./refrigeratorRoom";
-import { secondOpinionsRoom } from "./bedrooms/secondOpinionsRoom";
-import { southHall } from "./southHall";
-import { utilityRoom } from "./utilityRoom";
 import type { Room } from "./types";
+import { upstairsWorkArea } from "./upstairsWorkArea";
+import { gamesTeamArea } from "./gamesTeamArea";
+import { upstairsOffice } from "./upstairsOffice";
 
 export { Room } from "./types";
 
@@ -25,22 +15,12 @@ export { Room } from "./types";
 // the world's initial state — persistence overrides them when a save exists.
 // Order matters: roomOf resolves boundary points to the first containing room.
 export const ROOMS: Room[] = [
-  porch,
-  foyer,
-  library,
-  diningRoom,
+  arcadeRoom,
+  conferenceRoom,
+  gameRoom,
+  downstairsWorkArea,
   kitchen,
-  refrigeratorRoom,
-  utilityRoom,
-  northHall,
-  parlor,
-  southHall,
-  eveningWhiskeysRoom,
-  secondOpinionsRoom,
-  luckyInLoveAndOldFashionedsRoom,
-  texasTeasRoom,
-  partingShotsRoom,
-  bedroom6,
-  bedroom7,
-  bedroom8,
+  upstairsWorkArea,
+  gamesTeamArea,
+  upstairsOffice,
 ];
