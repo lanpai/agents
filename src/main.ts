@@ -13,10 +13,12 @@ import {
   frozenRooms,
   Humanoid,
   separateBodies,
+  STAB_DAMAGE,
   updateActions,
   updateEmoteHolds,
 } from "./humanoid";
 import { drawHouse, findPath, ROOMS, roomByName, roomOf } from "./locations";
+import { activateEscapeRoute, drawEscapeRoute } from "./escapeRoute";
 import { Item } from "./interactables/types";
 import { drawLog } from "./log";
 import { executeTool } from "./tools";
@@ -96,6 +98,15 @@ if (freshGame) assignRoles(humanoids);
 // places saved items into rooms and carrying arrays; when no save exists,
 // the seeds declared in src/rooms remain
 loadItems(humanoids);
+// Older saves may already contain the first death. Retire any persisted
+// opening-act one-on-one prompts and give pre-escape-route runs the same
+// unlocked exit on their next load.
+if (humanoids.some((humanoid) => humanoid.dead)) {
+  for (const humanoid of humanoids) {
+    humanoid.statuses.delete("Urgent Meeting");
+  }
+  activateEscapeRoute(humanoids);
+}
 
 const save = () => {
   saveHumanoids(humanoids);
@@ -121,6 +132,52 @@ initSelection(canvas, humanoids);
 // the audience guesses the killer from their phones (/vote.html)
 initVoting(humanoids);
 
+// Development shortcut that still takes the real combat path: this produces
+// the stab/collapse, closes voting, activates the escape route, delivers its
+// hints, and plays the complete reveal. With one living humanoid selected they
+// are the victim; with two selected the first is the attacker and second the
+// victim. Otherwise an existing killer (or the first living character) acts.
+function forceDebugKill(): string {
+  if (isCutscenePlaying()) return " wait for the current cutscene";
+  const living = humanoids.filter(
+    (humanoid) => !humanoid.dead && !humanoid.escaped,
+  );
+  if (living.length < 2) return " needs two living characters";
+  const picked = living.filter((humanoid) => selected.has(humanoid));
+  let killer: Humanoid;
+  let victim: Humanoid;
+  if (picked.length >= 2) {
+    killer = picked[0]!;
+    victim = picked[1]!;
+  } else if (picked.length === 1) {
+    victim = picked[0]!;
+    killer =
+      living.find((humanoid) => humanoid !== victim && isKiller(humanoid)) ??
+      living.find((humanoid) => humanoid !== victim)!;
+  } else {
+    killer = living.find(isKiller) ?? living[0]!;
+    victim = living.find((humanoid) => humanoid !== killer)!;
+  }
+
+  // Put the attacker within arm's reach inside the victim's room. Calling
+  // landStrike directly represents the instant a normal pursuit connects.
+  const room = roomOf(victim.x, victim.y);
+  killer.standStill();
+  victim.standStill();
+  killer.x = Math.max(room.x + 12, Math.min(room.x + room.w - 12, victim.x - 12));
+  killer.y = Math.max(room.y + 12, Math.min(room.y + room.h - 12, victim.y));
+  killer.landStrike(
+    victim,
+    "torso",
+    Math.max(STAB_DAMAGE, victim.body.torso),
+    { present: "stabs", past: "stabbed" },
+    humanoids,
+    simNow(),
+    true,
+  );
+  return ` ${killer.character.name} → ${victim.character.name}`;
+}
+
 let paused = false;
 initSidebar({
   isPaused: () => paused,
@@ -128,6 +185,7 @@ initSidebar({
     paused = value;
   },
   clearData,
+  forceKill: import.meta.env.DEV ? forceDebugKill : undefined,
   humanoids,
 });
 // initBetting(humanoids);
@@ -149,7 +207,9 @@ function introShots(): Shot[] {
         window.innerHeight / (maxY - minY),
       ) * 0.8,
   };
-  const cast = humanoids.filter((humanoid) => !humanoid.dead);
+  const cast = humanoids.filter(
+    (humanoid) => !humanoid.dead && !humanoid.escaped,
+  );
   const shots: Shot[] = [
     {
       x: wide.x,
@@ -223,6 +283,7 @@ function draw(now: number) {
   ctx.translate(-camera.x, -camera.y);
 
   drawHouse(ctx);
+  drawEscapeRoute(ctx, now);
 
   // painter's order: lower on screen draws in front
   const sortedHumanoids = [...humanoids].sort((a, b) => a.y - b.y);
@@ -370,6 +431,7 @@ function step(wallNow: number) {
       const frozen = frozenRooms(humanoids);
       const decisionBlocked = decisionBlockedRooms(humanoids);
       for (const humanoid of humanoids) {
+        if (humanoid.escaped) continue;
         const room = roomOf(humanoid.x, humanoid.y);
         if (decisionBlocked.has(room)) {
           // Stateful scenes still hold their personal decision schedules.

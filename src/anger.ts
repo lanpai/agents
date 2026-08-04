@@ -14,7 +14,10 @@
 import type { Humanoid } from "./humanoid";
 import { roomOf } from "./locations";
 import { addStatusToHumanoid } from "./statuses";
-import { MurderousIntent } from "./statuses/murderousIntent";
+import {
+  KILLER_GRACE_S,
+  MurderousIntent,
+} from "./statuses/murderousIntent";
 
 export const ANGER_MAX = 100;
 export const MURDEROUS_AT = 85;
@@ -41,11 +44,9 @@ export type AngerTier = (typeof ANGER_TIERS)[number];
 // office stays perfectly civil — the drift alone reaches MURDEROUS_AT here, and
 // friction in the conversation only ever pulls it in earlier.
 //
-// It is set below the four minutes the murder is aimed at, because turning is
-// not killing: the new killer still has to reach the kitchen, pick the knife
-// up, find their target and close on them, which is several decisions' worth of
-// walking. That approach is the part LLM pacing owns and this constant doesn't.
-// If murders keep landing late, lower this; if they land early, raise it.
+// It is set above the two-minute murder deadline so a run has time to build
+// tension before someone turns. Once they do, the status prompt owns the much
+// faster escalation from pursuit to desperation.
 const MINUTES_TO_BOIL = 2.5;
 
 // ...for the hottest temper in the building. Everyone drifts at their own
@@ -67,7 +68,6 @@ export function rollTemper(): number {
 // Either way the intent lifts, the knife goes back on the floor, and the gauge
 // resets low enough that somebody else is next in line rather than them again.
 const NERVE_FAILS_UNDER = 70;
-const KILLER_GRACE_S = 240;
 const SPENT_ANGER = 25;
 // a killer cools far slower than they heat: at full rate a couple of pleasant
 // remarks unseat them within a minute, and the role churns from one character
@@ -112,7 +112,7 @@ export function angerRatio(humanoid: Humanoid): number {
 }
 
 export function isKiller(humanoid: Humanoid): boolean {
-  return humanoid.statuses.has("Murderous Intent");
+  return !humanoid.escaped && humanoid.statuses.has("Murderous Intent");
 }
 
 export function killerIn(world: Humanoid[]): Humanoid | null {
@@ -141,7 +141,7 @@ export function driftAnger(world: Humanoid[], dt: number) {
     }
   }
   for (const humanoid of world) {
-    if (humanoid.dead) continue;
+    if (humanoid.dead || humanoid.escaped) continue;
     if (humanoid === claimed) continue; // already turned; the gauge is spent
     // the drift raises a floor rather than the value itself, and the value is
     // never allowed under it. Otherwise a room being pleasant to each other
@@ -166,7 +166,10 @@ export function driftAnger(world: Humanoid[], dt: number) {
   // world array — everyone pinned at the ceiling would otherwise hand it to
   // whoever happens to be listed first, every single time.
   const boiling = world
-    .filter((humanoid) => !humanoid.dead && humanoid.anger >= MURDEROUS_AT)
+    .filter(
+      (humanoid) =>
+        !humanoid.dead && !humanoid.escaped && humanoid.anger >= MURDEROUS_AT,
+    )
     .sort((a, b) => b.anger - a.anger || b.temper - a.temper)[0];
   if (boiling) makeKiller(boiling, world);
 }
@@ -185,7 +188,7 @@ export function feelSpeech(
   const capped = killerIn(world) !== null;
   const gain = base * (verb === "yell" ? YELL_MULTIPLIER : 1);
   for (const listener of listeners) {
-    if (listener.dead) continue;
+    if (listener.dead || listener.escaped) continue;
     raise(listener, gain, capped);
     // who it was aimed at matters as much as how much: a killer goes after
     // whoever wound them up most, not a name drawn out of a hat
@@ -215,7 +218,7 @@ function retarget(killer: Humanoid, world: Humanoid[]) {
     | undefined;
   if (!intent) return;
   const mark = world.find((other) => other.character.name === intent.target);
-  if (mark && !mark.dead) return; // still breathing; finish that one first
+  if (mark && !mark.dead && !mark.escaped) return; // still available; finish that one first
   // a spree doesn't work down a grudge list — it works outward from where they
   // are standing. Sending them across the building past a closer victim reads
   // as a bug, and gives everyone in between time to walk away.
@@ -240,7 +243,7 @@ function standDown(humanoid: Humanoid, world: Humanoid[]) {
   // everyone else has been pinned at the bystander ceiling while this ran;
   // nudging them apart keeps the next pick from being a coin flip
   for (const other of world) {
-    if (other === humanoid || other.dead) continue;
+    if (other === humanoid || other.dead || other.escaped) continue;
     other.anger = Math.min(other.anger, BYSTANDER_CAP);
   }
 }
@@ -274,7 +277,9 @@ function makeKiller(humanoid: Humanoid, world: Humanoid[]) {
 
 // whoever has needled them most; failing that, the nearest living soul
 function pickTarget(humanoid: Humanoid, world: Humanoid[]): string {
-  const others = world.filter((other) => other !== humanoid && !other.dead);
+  const others = world.filter(
+    (other) => other !== humanoid && !other.dead && !other.escaped,
+  );
   if (others.length === 0) return "";
   const ranked = others
     .map((other) => ({
@@ -290,7 +295,7 @@ function nearestLiving(humanoid: Humanoid, world: Humanoid[]): Humanoid | null {
   let best: Humanoid | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const other of world) {
-    if (other === humanoid || other.dead) continue;
+    if (other === humanoid || other.dead || other.escaped) continue;
     const distance = Math.hypot(other.x - humanoid.x, other.y - humanoid.y);
     if (distance < bestDistance) {
       bestDistance = distance;

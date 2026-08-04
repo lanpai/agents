@@ -33,6 +33,7 @@ type SavedHumanoid = {
   // Maps don't survive JSON, so the grudge ledger is stored as name/value pairs
   grudge: [string, number][];
   dead: boolean;
+  escaped: boolean;
   facing: Facing; // kept so a corpse lies the way it fell
   running: boolean;
   // statuses rebuild from the registry by name; durationLeft carries the
@@ -143,6 +144,7 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     hasKilled: humanoid.hasKilled,
     grudge: [...humanoid.grudge.entries()],
     dead: humanoid.dead,
+    escaped: humanoid.escaped,
     facing: humanoid.facing,
     running: humanoid.running,
     statuses: [...humanoid.statuses.values()].map((status) => {
@@ -233,6 +235,7 @@ function restore(entry: unknown): Humanoid | null {
     humanoid.facing = saved.facing;
   }
   humanoid.dead = saved.dead === true;
+  humanoid.escaped = saved.escaped === true;
   // a body restored from a save died some time ago: its pool is already full
   if (humanoid.dead) {
     humanoid.deadFor = 3600;

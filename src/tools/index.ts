@@ -14,6 +14,7 @@ import { ROOMS, roomOf } from "../locations";
 import { Item } from "../interactables/types";
 import { drop } from "./drop";
 import { drink } from "./drink";
+import { escape } from "./escape";
 
 export type { SimTool } from "./types";
 
@@ -28,6 +29,7 @@ export const BASIC_SIM_TOOLS: SimTool[] = [
   standStill,
   wait,
   drink,
+  escape,
 ];
 
 function getToolsFor(humanoid: Humanoid, world: Humanoid[]) {
