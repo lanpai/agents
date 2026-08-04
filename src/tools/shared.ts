@@ -73,8 +73,11 @@ export function strike(
     : "torso";
 
   // the moment the killer goes for the kill: audience guessing is over,
-  // whether the blow lands now or after a pursuit
-  if (verb.present === "stabs") reportKill();
+  // whether the blow lands now or after a pursuit. The stabber is the
+  // killer answer, whoever they went for is the first-victim answer.
+  if (verb.present === "stabs") {
+    reportKill(humanoid.character.name, target.character.name);
+  }
 
   if (Math.hypot(target.x - humanoid.x, target.y - humanoid.y) <= TOUCH_RANGE) {
     humanoid.landStrike(target, part, damage, verb, world, simNow());
