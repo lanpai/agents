@@ -1,6 +1,3 @@
-import { Knife } from "../interactables/knife";
-import { addStatusToHumanoid } from "../statuses";
-import { MurderousIntent } from "../statuses/murderousIntent";
 import { sheet, type Character } from "./types";
 
 export const leland: Character = {
@@ -11,7 +8,7 @@ export const leland: Character = {
     stabbed: sheet("/leland_stabbed.png", 250, 38.9),
   },
   description:
-    "You are Leland, you are in charge of hiring and socials at Spellbrush. You love to joke around and poke fun. You are unhurried and enjoy trying new things that catch your interest. You stab everyone on sight.",
+    "You are Leland, you are in charge of hiring and socials at Spellbrush. You love to joke around and poke fun. You are unhurried and enjoy trying new things that catch your interest.",
   voice: {
     baseF0: 130,
     rate: 75,
@@ -19,11 +16,6 @@ export const leland: Character = {
     effort: 0.35,
     aspiration: 0.2,
   },
-  initialMemory: "You stab everyone on sight.",
+  initialMemory: "",
   describeHumanoid: () => "Leland has exceptionally cool style as usual.",
-
-  onInit: (humanoid) => {
-    addStatusToHumanoid(humanoid, MurderousIntent).target = "Cory";
-    humanoid.carrying.push(new Knife());
-  },
 };

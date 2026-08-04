@@ -9,6 +9,8 @@ export class SDVX extends Interactable {
   name = "SDVX";
   onGroundDescription = "You see a Sound Voltex cabinet.";
 
+  override distraction = true;
+
   override onGroundTools(_humanoid: Humanoid): SimTool[] {
     const cabinet = this;
     return [

@@ -1,3 +1,4 @@
+import { HOSTILITY_FIELD } from "./say";
 import { simNow } from "../time";
 import { roommateNames } from "./shared";
 import type { SimTool } from "./types";
@@ -25,8 +26,9 @@ export const yell: SimTool = {
             description:
               'How the line is yelled, in a few words (e.g. "furious, spitting every word", "booming and jovial", "cracking with panic"). This should only be vocal descriptions, not physical.',
           },
+          hostility: HOSTILITY_FIELD,
         },
-        required: ["message", "delivery"],
+        required: ["message", "delivery", "hostility"],
       },
     };
   },
@@ -38,6 +40,7 @@ export const yell: SimTool = {
         simNow(),
         "yell",
         typeof input.delivery === "string" ? input.delivery : undefined,
+        typeof input.hostility === "string" ? input.hostility : undefined,
       );
       // logging happens inside say(), with the line the world actually hears
     }

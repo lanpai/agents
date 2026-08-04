@@ -20,6 +20,16 @@ export class Knife extends Item {
       : "You see a knife that's likely used by the cook staff.";
   inInventoryDescription = "You are carrying a knife.";
 
+  // There is exactly one knife in the building, so whoever holds it decides
+  // whether the story can happen at all — a bystander pocketing it on their way
+  // through the kitchen leaves the killer with nothing to reach for. Only the
+  // person who means to use it can pick it up. Gating on an anger threshold
+  // instead was not enough: bystanders sit just under the murderous line while a
+  // killer is active, so they cleared the bar too and took the blade with them.
+  override canBeTakenBy(humanoid: Humanoid): boolean {
+    return humanoid.statuses.has("Murderous Intent");
+  }
+
   override inInventoryTools(_humanoid: Humanoid): SimTool[] {
     return [
       {

@@ -15,14 +15,19 @@ import {
   updateActions,
   updateEmoteHolds,
 } from "./humanoid";
-import { drawHouse, ROOMS, roomOf } from "./locations";
+import { drawHouse, findPath, ROOMS, roomByName, roomOf } from "./locations";
+import { Item } from "./interactables/types";
 import { drawLog } from "./log";
+import { executeTool } from "./tools";
+import { moveToRoom } from "./tools/shared";
+import { isKiller } from "./anger";
 import {
   loadHumanoids,
   loadItems,
   saveHumanoids,
   saveItems,
 } from "./persistence";
+import { driftAnger } from "./anger";
 import { drawSelectionBox, initSelection, selected } from "./selection";
 import { initSidebar, isSidebarOpen } from "./sidebar";
 import { drawSubtitles } from "./subtitles";
@@ -92,6 +97,7 @@ initSidebar({
     paused = value;
   },
   clearData,
+  humanoids,
 });
 // initBetting(humanoids);
 
@@ -204,10 +210,111 @@ function draw(now: number) {
   drawCutscene(ctx);
 }
 
+// Arming the killer is not left to the model. Told in prose to go and fetch a
+// knife, a character keeps choosing whatever is in front of them — a cabinet to
+// play, someone to talk to — because those are concrete and the intent is not,
+// and the run stalls with a killer who never arms themself. So the walk to the
+// blade is mechanical: whenever the killer is idle and empty-handed, they head
+// for it. Everything after that — getting the target alone, the blow itself —
+// is still the model's call.
+// how long the killer must have been genuinely stopped before the walk is
+// (re-)issued, and how long before it may be issued again. Without both, this
+// fires on any single frame where they happen to be still — the frame after a
+// spoken line calls standStill(), the frame between two waypoints — and each
+// firing restarts the hop from the near side of the door. That is the pacing in
+// and out of a doorway: the order was being reissued faster than the walk to
+// the door could complete.
+const IDLE_BEFORE_FETCH_S = 1.2;
+const FETCH_REISSUE_S = 5;
+let fetchIdle = 0;
+let fetchCooldown = 0;
+
+function fetchTheKnife(
+  world: Humanoid[],
+  frozen: Set<unknown>,
+  dt: number,
+) {
+  const killer = world.find(isKiller);
+  // a killer mid-spree who has put the blade down goes back for it too
+  if (
+    !killer ||
+    killer.dead ||
+    killer.carrying.some((item) => item.name === "Knife")
+  ) {
+    fetchIdle = 0;
+    fetchCooldown = 0;
+    return;
+  }
+  fetchCooldown = Math.max(0, fetchCooldown - dt);
+  // don't cut across an order they're already carrying out, a decision or line
+  // still in flight, or a room that is standing still around them
+  const busy =
+    killer.thinking ||
+    killer.speaking ||
+    killer.action !== null ||
+    killer.isMoving() ||
+    killer.pendingUse !== null ||
+    killer.pendingStrike !== null ||
+    frozen.has(roomOf(killer.x, killer.y));
+  if (busy) {
+    fetchIdle = 0;
+    return;
+  }
+  fetchIdle += dt;
+  if (fetchIdle < IDLE_BEFORE_FETCH_S || fetchCooldown > 0) return;
+  fetchIdle = 0;
+  fetchCooldown = FETCH_REISSUE_S;
+
+  const knifeRoom = ROOMS.find((room) =>
+    room.interactables.some(
+      (thing) => thing instanceof Item && thing.name === "Knife",
+    ),
+  );
+  if (!knifeRoom) return; // in someone's hands; makeKiller already made them drop it
+
+  const here = roomOf(killer.x, killer.y);
+  if (here === knifeRoom) {
+    // same room: pick_up walks the last few feet and does the grab, with the
+    // witnesses and the log line it would have had from a decision
+    executeTool("pick_up", killer, world, { item: "Knife" });
+    return;
+  }
+  const route = findPath(here, knifeRoom);
+  const next = route?.[1] && roomByName(route[1]);
+  if (next) moveToRoom(killer, world, { room: next.name }, true);
+}
+
 let last = performance.now();
+let frameFaults = 0;
+
+// The loop must re-arm itself no matter what happened inside it. With the
+// requestAnimationFrame call sitting at the end of the body, a single throw
+// anywhere in a frame — one bad tool call, one undefined dereference — ends the
+// chain and the whole game stops dead, with the cause swallowed and nothing on
+// screen to say so. Now the frame is scheduled regardless and the error is
+// printed, so a fault costs one frame instead of the session.
 function frame(wallNow: number) {
-  const dt = Math.min((wallNow - last) / 1000, 0.05);
+  try {
+    step(wallNow);
+  } catch (error) {
+    frameFaults++;
+    if (frameFaults <= 5) console.error("[frame] dropped a frame:", error);
+    if (frameFaults === 5) console.error("[frame] further faults suppressed");
+  }
+  requestAnimationFrame(frame);
+}
+
+function step(wallNow: number) {
+  // the sim's dt is capped so a stalled frame can't teleport anyone through a
+  // wall; the anger clock wants the real elapsed time instead, or a throttled
+  // background tab (rAF drops to ~1Hz) would run the pacing 20x slow
+  const elapsed = (wallNow - last) / 1000;
+  const dt = Math.min(elapsed, 0.05);
   last = wallNow;
+  // the simmer runs on real seconds and through cutscenes: the target is four
+  // minutes from the moment the page opens, and the opening credits are half a
+  // minute the player sits through like any other
+  if (!paused) driftAnger(humanoids, elapsed);
   if (isCutscenePlaying()) {
     // a cutscene freezes every room: sim time holds still, nobody thinks or
     // moves, and the cutscene drives the camera itself. One-shot animations
@@ -239,6 +346,7 @@ function frame(wallNow: number) {
       // sharing a spot — including people whose room is frozen, since that is
       // a correction of where they already are, not travel
       separateBodies(humanoids);
+      fetchTheKnife(humanoids, frozen, dt);
       scheduleThinking(humanoids, now);
       for (const humanoid of humanoids)
         maybeUpdateMemory(humanoid, now, humanoids);
@@ -247,7 +355,6 @@ function frame(wallNow: number) {
     updateCamera(dt);
   }
   draw(wallNow);
-  requestAnimationFrame(frame);
 }
 
 window.addEventListener("resize", resize);

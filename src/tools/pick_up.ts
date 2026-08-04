@@ -1,15 +1,24 @@
+import type { Humanoid } from "../humanoid";
 import { itemsIn } from "../interactables";
 import { roomOf } from "../locations";
 import { logEmote } from "../log";
 import { approachAndUse } from "./shared";
 import type { SimTool } from "./types";
 
+// what this person could actually walk off with — an item may refuse them
+// (see Item.canBeTakenBy) while still lying there in plain sight
+function takeableBy(humanoid: Humanoid) {
+  return itemsIn(roomOf(humanoid.x, humanoid.y)).filter((item) =>
+    item.canBeTakenBy(humanoid),
+  );
+}
+
 export const pickUp: SimTool = {
   name: "pick_up",
   // only offered while something is actually lying in the room
-  condition: (humanoid) => itemsIn(roomOf(humanoid.x, humanoid.y)).length > 0,
+  condition: (humanoid) => takeableBy(humanoid).length > 0,
   definition: (humanoid) => {
-    const items = itemsIn(roomOf(humanoid.x, humanoid.y));
+    const items = takeableBy(humanoid);
     return {
       name: "pick_up",
       description: "Pick up an item lying in your room and carry it with you.",
@@ -32,7 +41,8 @@ export const pickUp: SimTool = {
     const grab = () => {
       const room = roomOf(humanoid.x, humanoid.y);
       const item = itemsIn(room).find(
-        (candidate) => candidate.name === input.item,
+        (candidate) =>
+          candidate.name === input.item && candidate.canBeTakenBy(humanoid),
       );
       if (!item) {
         humanoid.remember(
@@ -56,7 +66,7 @@ export const pickUp: SimTool = {
         humanoid,
       );
     };
-    const item = itemsIn(roomOf(humanoid.x, humanoid.y)).find(
+    const item = takeableBy(humanoid).find(
       (candidate) => candidate.name === input.item,
     );
     if (!item) {

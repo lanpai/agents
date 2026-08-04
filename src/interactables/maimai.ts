@@ -10,6 +10,8 @@ export class Maimai extends Interactable {
   name = "maimai";
   onGroundDescription = "You see a maimai DX cabinet.";
 
+  override distraction = true;
+
   override onGroundTools(_humanoid: Humanoid): SimTool[] {
     const cabinet = this;
     return [

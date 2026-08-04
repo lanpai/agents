@@ -10,6 +10,8 @@ export class DDR extends Interactable {
   name = "DDR";
   onGroundDescription = "You see a Dance Dance Revolution cabinet.";
 
+  override distraction = true;
+
   override onGroundTools(_humanoid: Humanoid): SimTool[] {
     const cabinet = this;
     return [

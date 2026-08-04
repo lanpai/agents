@@ -26,6 +26,12 @@ type SavedHumanoid = {
   unconsolidated: string[];
   body: Record<BodyPart, number>;
   stamina: number;
+  anger: number;
+  angerFloor: number;
+  temper: number;
+  hasKilled: boolean;
+  // Maps don't survive JSON, so the grudge ledger is stored as name/value pairs
+  grudge: [string, number][];
   dead: boolean;
   facing: Facing; // kept so a corpse lies the way it fell
   running: boolean;
@@ -130,6 +136,11 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     unconsolidated: humanoid.unconsolidated,
     body: humanoid.body,
     stamina: humanoid.stamina,
+    anger: humanoid.anger,
+    angerFloor: humanoid.angerFloor,
+    temper: humanoid.temper,
+    hasKilled: humanoid.hasKilled,
+    grudge: [...humanoid.grudge.entries()],
     dead: humanoid.dead,
     facing: humanoid.facing,
     running: humanoid.running,
@@ -196,6 +207,21 @@ function restore(entry: unknown): Humanoid | null {
   }
   if (typeof saved.stamina === "number")
     humanoid.stamina = clamp(saved.stamina);
+  if (typeof saved.anger === "number") humanoid.anger = clamp(saved.anger);
+  if (typeof saved.angerFloor === "number")
+    humanoid.angerFloor = clamp(saved.angerFloor);
+  // a run that already had its murder must not start hunting for a new killer
+  humanoid.hasKilled = saved.hasKilled === true;
+  // a re-rolled temper would reshuffle who is about to snap mid-run
+  if (typeof saved.temper === "number" && saved.temper > 0)
+    humanoid.temper = saved.temper;
+  if (Array.isArray(saved.grudge)) {
+    for (const pair of saved.grudge) {
+      if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "number") {
+        humanoid.grudge.set(pair[0], pair[1]);
+      }
+    }
+  }
   if (
     saved.facing === "front" ||
     saved.facing === "back" ||
