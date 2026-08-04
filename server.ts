@@ -1,23 +1,9 @@
 import "bun";
 import Anthropic from "@anthropic-ai/sdk";
-import { buildRoutedIclFields, isRoutedVoice } from "./routedTts";
-import {
-  SPEECH_EMOTIONS,
-  type SpeechEmotion,
-} from "./src/speechEmotion";
 
 // which model serves agent decisions; the frontend always speaks Anthropic
 // shapes — non-sonnet paths translate to/from OpenAI-compatible APIs
-type Backend = "sonnet" | "k3" | "deepseek" | "gemini";
-
-const configuredBackend = Bun.env.AGENT_BACKEND ?? "gemini";
-const BACKENDS: Backend[] = ["sonnet", "k3", "deepseek", "gemini"];
-if (!BACKENDS.includes(configuredBackend as Backend)) {
-  throw new Error(
-    `Invalid AGENT_BACKEND "${configuredBackend}". Expected one of: ${BACKENDS.join(", ")}`,
-  );
-}
-const BACKEND = configuredBackend as Backend;
+const BACKEND = "deepseek" as "sonnet" | "k3" | "deepseek";
 
 type OpenAICompatibleConfig = {
   label: string; // error-message prefix
@@ -64,15 +50,6 @@ const DEEPSEEK_FLASH: OpenAICompatibleConfig = {
   extraBody: { thinking: { type: "disabled" } },
 };
 
-const GEMINI_FLASH: OpenAICompatibleConfig = {
-  label: "gemini-flash",
-  url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-  model: Bun.env.GEMINI_MODEL ?? "gemini-3-flash-preview",
-  apiKeyEnv: "GOOGLE_GENERATIVE_AI_API_KEY",
-  timeoutMs: 30000,
-  maxTokensMultiplier: 1,
-};
-
 // fail fast: a hung upstream request would otherwise pin a frontend decision
 // slot for the SDK default of 10 minutes
 const client = new Anthropic({ timeout: 15000, maxRetries: 1 });
@@ -84,219 +61,6 @@ type AgentRequest = {
   tool_choice?: Anthropic.ToolChoice;
   max_tokens?: number;
 };
-
-type TtsRequest = {
-  text: string;
-  speakerEmbedding?: number[];
-  voice?: string;
-  serverUrl?: string;
-  routedVoice?: string;
-  emotion?: string;
-};
-
-const QWEN_TTS_URL = (Bun.env.QWEN_TTS_URL ?? "http://127.0.0.1:9001").replace(
-  /\/$/,
-  "",
-);
-const QWEN_TTS_ALLOWED_HOSTS = new Set(
-  (Bun.env.QWEN_TTS_ALLOWED_HOSTS ?? "")
-    .split(",")
-    .map((host) => host.trim().toLowerCase())
-    .filter(Boolean),
-);
-try {
-  QWEN_TTS_ALLOWED_HOSTS.add(new URL(QWEN_TTS_URL).hostname.toLowerCase());
-} catch {
-  // The startup request path will surface an invalid configured URL.
-}
-const QWEN_TTS_MODEL = Bun.env.QWEN_TTS_MODEL;
-const QWEN_TTS_DEFAULT_VOICE =
-  Bun.env.QWEN_TTS_DEFAULT_VOICE ?? "web_nori_v0";
-const qwenModelCache = new Map<string, Promise<string>>();
-
-function qwenModel(ttsUrl: string): Promise<string> {
-  if (QWEN_TTS_MODEL) return Promise.resolve(QWEN_TTS_MODEL);
-  let promise = qwenModelCache.get(ttsUrl);
-  if (!promise) {
-    promise = fetch(`${ttsUrl}/v1/models`, {
-      signal: AbortSignal.timeout(5000),
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`model discovery ${response.status}`);
-        const listing = (await response.json()) as {
-          data?: { id?: unknown }[];
-        };
-        const model = listing.data?.[0]?.id;
-        if (typeof model !== "string" || model.length === 0) {
-          throw new Error("model discovery returned no model id");
-        }
-        return model;
-      })
-      .catch(() => "/opt/models/qwen3-tts");
-    qwenModelCache.set(ttsUrl, promise);
-  }
-  return promise;
-}
-
-function requestTtsUrl(value: unknown): string | null {
-  if (value === undefined) return QWEN_TTS_URL;
-  if (typeof value !== "string") return null;
-  try {
-    const url = new URL(value);
-    if (
-      (url.protocol !== "http:" && url.protocol !== "https:") ||
-      !isAllowedTtsHost(url.hostname) ||
-      !url.port ||
-      url.username ||
-      url.password
-    )
-      return null;
-    return url.toString().replace(/\/$/, "");
-  } catch {
-    return null;
-  }
-}
-
-function isAllowedTtsHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  if (
-    host === "127.0.0.1" ||
-    host === "localhost" ||
-    host === "[::1]" ||
-    host.endsWith(".ts.net") ||
-    QWEN_TTS_ALLOWED_HOSTS.has(host)
-  )
-    return true;
-  const ipv4 = host.split(".").map(Number);
-  return (
-    ipv4.length === 4 &&
-    ipv4.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) &&
-    ipv4[0] === 100 &&
-    ipv4[1]! >= 64 &&
-    ipv4[1]! <= 127
-  );
-}
-
-async function callQwenTts(req: Request): Promise<Response> {
-  let body: TtsRequest;
-  try {
-    body = (await req.json()) as TtsRequest;
-  } catch {
-    return Response.json({ error: "invalid JSON body" }, { status: 400 });
-  }
-
-  if (typeof body.text !== "string" || body.text.trim().length === 0) {
-    return Response.json({ error: "text must be a non-empty string" }, { status: 400 });
-  }
-  if (body.text.length > 4000) {
-    return Response.json({ error: "text exceeds 4000 characters" }, { status: 400 });
-  }
-
-  const ttsUrl = requestTtsUrl(body.serverUrl);
-  if (!ttsUrl) {
-    return Response.json(
-      {
-        error:
-          "serverUrl must be an allowed local/Tailscale http(s) URL with a port",
-      },
-      { status: 400 },
-    );
-  }
-
-  const embedding = body.speakerEmbedding;
-  if (
-    embedding !== undefined &&
-    (!Array.isArray(embedding) ||
-      embedding.length === 0 ||
-      embedding.length > 4096 ||
-      !embedding.every((value) =>
-        typeof value === "number" && Number.isFinite(value)))
-  ) {
-    return Response.json(
-      { error: "speakerEmbedding must be a non-empty finite number array" },
-      { status: 400 },
-    );
-  }
-
-  const payload: Record<string, unknown> = {
-    model: await qwenModel(ttsUrl),
-    input: body.text,
-    task_type: "Base",
-    language: "English",
-    stream: true,
-    response_format: "pcm",
-    max_new_tokens: 4096,
-  };
-  let routedRoute: string | undefined;
-  if (body.routedVoice !== undefined) {
-    if (!isRoutedVoice(body.routedVoice)) {
-      return Response.json({ error: "unknown routedVoice" }, { status: 400 });
-    }
-    const emotion =
-      typeof body.emotion === "string" &&
-      (SPEECH_EMOTIONS as readonly string[]).includes(body.emotion)
-        ? (body.emotion as SpeechEmotion)
-        : "neutral";
-    try {
-      const { route, ...fields } = await buildRoutedIclFields(
-        body.routedVoice,
-        emotion,
-      );
-      routedRoute = route;
-      Object.assign(payload, fields);
-    } catch (error) {
-      return Response.json(
-        { error: `routed TTS assets unavailable: ${String(error)}` },
-        { status: 500 },
-      );
-    }
-  } else if (embedding) {
-    payload.speaker_embedding = embedding;
-    payload.x_vector_only_mode = true;
-  } else {
-    payload.voice =
-      typeof body.voice === "string" && body.voice.length > 0
-        ? body.voice
-        : QWEN_TTS_DEFAULT_VOICE;
-  }
-
-  let upstream: Response;
-  try {
-    upstream = await fetch(`${ttsUrl}/v1/audio/speech`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.any([req.signal, AbortSignal.timeout(120000)]),
-    });
-  } catch (error) {
-    return Response.json(
-      { error: `Qwen TTS unavailable: ${String(error)}` },
-      { status: 502 },
-    );
-  }
-
-  if (!upstream.ok) {
-    const detail = await upstream.text().catch(() => "");
-    return Response.json(
-      { error: `Qwen TTS ${upstream.status}: ${detail.slice(0, 500)}` },
-      { status: 502 },
-    );
-  }
-
-  return new Response(upstream.body, {
-    headers: {
-      "content-type": upstream.headers.get("content-type") ?? "audio/pcm",
-      "cache-control": "no-store",
-      "x-audio-sample-rate": "24000",
-      ...(body.routedVoice
-        ? {
-            "x-tts-voice": body.routedVoice,
-            "x-tts-route": routedRoute ?? "neutral",
-          }
-        : {}),
-    },
-  });
-}
 
 async function callSonnet(body: AgentRequest): Promise<Response> {
   try {
@@ -428,23 +192,19 @@ async function callOpenAICompatible(
 }
 
 Bun.serve({
-  port: Number(Bun.env.API_PORT ?? 3002),
+  port: 3001,
   routes: {
-    "/api/health": Response.json({ ok: true, backend: BACKEND }),
-    "/api/tts": { POST: callQwenTts },
     "/api/agent": {
       POST: async (req) => {
         const body = (await req.json()) as AgentRequest;
         if (BACKEND === "k3") return callOpenAICompatible(KIMI, body);
         if (BACKEND === "deepseek") return callOpenAICompatible(DEEPSEEK, body);
-        if (BACKEND === "gemini") return callOpenAICompatible(GEMINI_FLASH, body);
         return callSonnet(body);
       },
     },
     "/api/flash": {
       POST: async (req) => {
         const body = (await req.json()) as AgentRequest;
-        if (BACKEND === "gemini") return callOpenAICompatible(GEMINI_FLASH, body);
         return callOpenAICompatible(DEEPSEEK_FLASH, body);
       },
     },
@@ -452,5 +212,5 @@ Bun.serve({
 });
 
 console.log(
-  `agent API listening on http://localhost:${Bun.env.API_PORT ?? 3002} (backend: ${BACKEND})`,
+  `agent API listening on http://localhost:3001 (backend: ${BACKEND})`,
 );

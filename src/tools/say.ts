@@ -1,9 +1,4 @@
 import { simNow } from "../time";
-import {
-  speechEmotion,
-  speechEmotionDescription,
-  speechEmotionsForVoice,
-} from "../speechEmotion";
 import { roommateNames } from "./shared";
 import type { SimTool } from "./types";
 
@@ -30,15 +25,8 @@ export const say: SimTool = {
             description:
               'How the line is spoken, in a few words (e.g. "flat and cold", "rushed and panicky, rising at the end", "almost a whisper"). This should only be vocal descriptions, not physical.',
           },
-          emotion: {
-            type: "string",
-            enum: [...speechEmotionsForVoice(humanoid.character.voice.routedVoice)],
-            description: speechEmotionDescription(
-              humanoid.character.voice.routedVoice,
-            ),
-          },
         },
-        required: ["message", "delivery", "emotion"],
+        required: ["message", "delivery"],
       },
     };
   },
@@ -50,7 +38,6 @@ export const say: SimTool = {
         simNow(),
         "say",
         typeof input.delivery === "string" ? input.delivery : undefined,
-        speechEmotion(input.emotion, humanoid.character.voice.routedVoice),
       );
       // logging happens inside say(), with the line the world actually hears
     }

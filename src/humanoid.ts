@@ -27,7 +27,6 @@ import type {
   SpriteSheet,
 } from "./characters/types";
 import { whitecatSprites } from "./characters/whitecat";
-import type { SpeechEmotion } from "./speechEmotion";
 import type { Status } from "./statuses/types";
 
 export const UNITS_PER_FOOT = 10;
@@ -455,15 +454,11 @@ export function updateEmoteHolds(world: Humanoid[], dt: number) {
 // speech filters contributed by statuses (e.g. Divine Madness): the first
 // status offering a warp wins. Outgoing rewrites what the world hears when
 // this humanoid speaks; incoming rewrites what this humanoid hears
-function outgoingSpeechWarp(
-  speaker: Humanoid,
-): ((text: string) => Promise<string>) | null {
+function outgoingSpeechWarp(speaker: Humanoid) {
   return null;
 }
 
-function incomingSpeechWarp(
-  hearer: Humanoid,
-): ((text: string, speaker: string) => Promise<string>) | null {
+function incomingSpeechWarp(hearer: Humanoid) {
   return null;
 }
 
@@ -675,7 +670,6 @@ export class Humanoid {
     now: number,
     verb: "say" | "yell",
     delivery?: string, // stage direction for the voice, passed to transcription
-    emotion: SpeechEmotion = "neutral",
   ) {
     // trim quotes if fully wrapped (avoids trimming text that starts of ends with quoted text)
     if (text.startsWith('"') && text.endsWith('"'))
@@ -691,7 +685,7 @@ export class Humanoid {
 
     const warp = outgoingSpeechWarp(this);
     if (!warp) {
-      this.deliverLine(text, world, now, verb, delivery, emotion);
+      this.deliverLine(text, world, now, verb, delivery);
       return;
     }
     // hold the room frozen while the line is being warped, exactly like a
@@ -702,7 +696,7 @@ export class Humanoid {
       .then((warped) => {
         this.speaking = false;
         if (this.dead) return;
-        this.deliverLine(warped, world, simNow(), verb, delivery, emotion);
+        this.deliverLine(warped, world, simNow(), verb, delivery);
       });
   }
 
@@ -714,7 +708,6 @@ export class Humanoid {
     now: number,
     verb: "say" | "yell",
     delivery?: string,
-    emotion: SpeechEmotion = "neutral",
   ) {
     // translation starts while the line waits in the TTS queue, so the
     // subtitle is usually ready the moment the bubble appears
@@ -725,7 +718,6 @@ export class Humanoid {
       speaker: this.character.name,
       voice: this.character.voice,
       delivery,
-      emotion,
       volume: verb === "yell" ? 1 : 0.7,
       onStart: () => {
         if (this.dead) return;
