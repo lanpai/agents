@@ -1,7 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { simNow } from "./time";
 import { recordAgentCall } from "./calls";
-import { BODY_PARTS, formatFeet, frozenRooms, type Humanoid } from "./humanoid";
+import {
+  BODY_PARTS,
+  decisionBlockedRooms,
+  formatFeet,
+  type Humanoid,
+} from "./humanoid";
 import {
   describeItemInInventory,
   describeInteractableOnGround,
@@ -89,7 +94,7 @@ export function isThinking(): boolean {
 // oldest-due first so humanoids late in the array can't be starved of slots
 export function scheduleThinking(humanoids: Humanoid[], now: number) {
   if (inFlight >= MAX_CONCURRENT) return;
-  const frozen = frozenRooms(humanoids);
+  const frozen = decisionBlockedRooms(humanoids);
   const due = humanoids
     .filter(
       (humanoid) =>

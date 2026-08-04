@@ -1,4 +1,5 @@
 const STORAGE_KEY = "sim:qwen-routed-tts-url";
+const ENABLED_STORAGE_KEY = "sim:tts-enabled";
 
 export const DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:8092";
 export const TAILSCALE_TTS_SERVER_URL =
@@ -18,6 +19,14 @@ export type TtsServerSelection = {
 
 let activeUrl: string | null = null;
 let manualRevision = 0;
+
+export function getTtsEnabled(): boolean {
+  return localStorage.getItem(ENABLED_STORAGE_KEY) !== "false";
+}
+
+export function setTtsEnabled(enabled: boolean): void {
+  localStorage.setItem(ENABLED_STORAGE_KEY, String(enabled));
+}
 
 export function getTtsServerUrl(): string {
   return (
