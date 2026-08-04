@@ -25,6 +25,7 @@ type Line = {
   emotion: SpeechEmotion;
   language: SpeechLanguage;
   volume: number;
+  waitFor?: Promise<unknown>; // e.g. the subtitle translation
   onStart?: () => void;
   onEnd?: () => void;
 };
@@ -32,6 +33,7 @@ type Line = {
 // a silent beat: an *action* bubble holding the screen like a spoken line
 type Beat = {
   silentMs: number;
+  waitFor?: Promise<unknown>;
   onStart?: () => void;
   onEnd?: () => void;
 };
@@ -94,6 +96,7 @@ export function speak(
     emotion?: SpeechEmotion;
     language: SpeechLanguage;
     volume?: number;
+    waitFor?: Promise<unknown>;
     onStart?: () => void;
     onEnd?: () => void;
   },
@@ -120,7 +123,11 @@ export function speak(
 // instant bubble.
 export function queueBeat(
   silentMs: number,
-  callbacks: { onStart?: () => void; onEnd?: () => void },
+  callbacks: {
+    waitFor?: Promise<unknown>;
+    onStart?: () => void;
+    onEnd?: () => void;
+  },
 ): boolean {
   if (queued >= MAX_QUEUE) return false;
   queued++;
@@ -137,6 +144,10 @@ async function pump() {
   const item = queue.shift();
   if (!item) return;
   playing = true;
+
+  // a bubble never opens ahead of what it's waiting on (its subtitle
+  // translation); the request has its own timeout, so this can't hang
+  if (item.waitFor) await item.waitFor.catch(() => {});
 
   if ("silentMs" in item) {
     item.onStart?.();
@@ -169,11 +180,7 @@ async function pump() {
   void pump();
 }
 
-async function playQwen(
-  line: Line,
-  audio: AudioOutput,
-  onStart: () => void,
-) {
+async function playQwen(line: Line, audio: AudioOutput, onStart: () => void) {
   const record = recordAgentCall({
     humanoid: line.speaker,
     kind: "tts",
@@ -202,9 +209,7 @@ async function playQwen(
       throw new Error(`TTS API ${response.status}`);
     }
     const route = response.headers.get("x-tts-route");
-    const referenceLanguage = response.headers.get(
-      "x-tts-reference-language",
-    );
+    const referenceLanguage = response.headers.get("x-tts-reference-language");
 
     audio.gain.gain.value = line.volume;
     const reader = response.body.getReader();
@@ -231,7 +236,11 @@ async function playQwen(
       if (bytes.length === 0) continue;
 
       const samples = new Float32Array(bytes.length / 2);
-      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const view = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      );
       for (let index = 0; index < samples.length; index++) {
         samples[index] = view.getInt16(index * 2, true) / 32768;
       }
@@ -317,6 +326,7 @@ Rules:
 - Words in the same clause run together with nothing between them — inserting breaks between ordinary words sounds broken and robotic.
 - Only where the written punctuation marks a real break, insert , ; or . as its own token (short, medium, long pause). Most lines need one or two at most, often none.
 - Transcribe how the line is naturally spoken aloud: expand numbers and abbreviations into words.
+- If the language is not in English, do your best guess estimate of the phonemes.
 
 A delivery direction may accompany the line. Shape it with these directives, each as its own token:
 - b+20 / b-15 bends the pitch up/down (Hz) from that point on; a bare b returns to the speaker's normal pitch.

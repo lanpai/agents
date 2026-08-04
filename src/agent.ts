@@ -1,5 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { simNow } from "./time";
+import { isKiller } from "./anger";
 import { recordAgentCall } from "./calls";
 import {
   BODY_PARTS,
@@ -24,6 +25,12 @@ import { buildTools, executeTool } from "./tools";
 const MAX_CONCURRENT = 3;
 const THINK_INTERVAL_MS = 15000;
 const THINK_JITTER_MS = 6000;
+// someone on their way to kill is not idling between thoughts. The approach —
+// fetch the knife, find them, close the distance — is several decisions long,
+// and at the ambient cadence it costs more real time than the whole simmer that
+// led to it. This is the other half of hitting the four-minute mark.
+const KILLER_INTERVAL_MS = 6000;
+const KILLER_JITTER_MS = 2500;
 const ERROR_BACKOFF_MS = 15000;
 // generously above the server's worst case (15s timeout x 2 attempts);
 // guarantees a slot can never be pinned by a hung connection
@@ -243,8 +250,11 @@ async function decide(humanoid: Humanoid, world: Humanoid[]) {
     if (humanoid.dead) return; // killed while the request was in flight
     // set the cadence before executing: tools may pull nextThinkAt closer
     // (e.g. find_path schedules an immediate follow-up), which must survive
+    const hunting = isKiller(humanoid);
     humanoid.nextThinkAt =
-      simNow() + THINK_INTERVAL_MS + Math.random() * THINK_JITTER_MS;
+      simNow() +
+      (hunting ? KILLER_INTERVAL_MS : THINK_INTERVAL_MS) +
+      Math.random() * (hunting ? KILLER_JITTER_MS : THINK_JITTER_MS);
     for (const block of orderToolCalls(message.content)) {
       executeTool(
         block.name,
@@ -338,9 +348,20 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
     describeBody(humanoid),
   ];
 
-  for (const status of humanoid.statuses.values()) {
+  // someone planning a murder is not also thinking about the arcade: while the
+  // intent is on them it is the only appetite they are told about, and it goes
+  // at the very top rather than buried under the room description. Left in the
+  // middle of the observation and competing with a craving, it loses to
+  // whatever concrete, zero-risk thing is within reach.
+  const hunting = isKiller(humanoid);
+  const statuses = hunting
+    ? [humanoid.statuses.get("Murderous Intent")!]
+    : [...humanoid.statuses.values()];
+  for (const status of statuses) {
     const description = status.describeStatus(humanoid, humanoid);
-    if (description) lines.push("", description);
+    if (!description) continue;
+    if (hunting) lines.unshift(description, "");
+    else lines.push("", description);
   }
 
   const heldItems = humanoid.carrying;

@@ -39,6 +39,7 @@ import {
   type SpeechLanguage,
 } from "./speechLanguage";
 import { spriteFor, spriteReady } from "./sprites";
+import { feelSpeech, rollTemper } from "./anger";
 import type { Status } from "./statuses/types";
 
 export const UNITS_PER_FOOT = 10;
@@ -581,6 +582,22 @@ export class Humanoid {
   longMemory = "";
   unconsolidated: string[] = []; // events not yet folded into longMemory
 
+  // 0..100, continuous; see src/anger.ts for what moves it and what it costs
+  // to cross MURDEROUS_AT. Nothing draws it.
+  anger = 0;
+  // what the constant drift alone has reached; anger is never let below it, so
+  // the pacing target holds no matter how pleasant the conversation gets
+  angerFloor = 0;
+  // this one's share of the ambient drift, rolled at spawn: without it every
+  // gauge rises in lockstep and who snaps first is just array order
+  temper = rollTemper();
+  // real seconds spent carrying murderous intent without a body to show for it
+  killerFor = 0;
+  hasKilled = false;
+  // how much of that anger each other person is responsible for, by name —
+  // it's what picks the target once someone turns
+  grudge = new Map<string, number>();
+
   thinking = false;
   speaking = false; // something featuring them is queued or playing
   blocksPlotForPresentation = false;
@@ -630,8 +647,8 @@ export class Humanoid {
   // until the camera has seen the act
   showEmote(text: string) {
     // the bubble displays *text*, and the subtitle keys on the display form;
-    // requesting at queue time gives the translation a head start
-    requestSubtitle(
+    // the beat waits on the translation so bubble and subtitle land together
+    const subtitled = requestSubtitle(
       this.character.name,
       roomOf(this.x, this.y).name,
       `*${text}*`,
@@ -639,6 +656,7 @@ export class Humanoid {
     // actions share the spoken-line queue: they hold the screen one at a
     // time, so an action in one room can't talk over dialogue in another
     const beat = queueBeat(EMOTE_MS_BASE + text.length * EMOTE_MS_PER_CHAR, {
+      waitFor: subtitled,
       onStart: () => {
         if (this.dead) return;
         this.emote = { text };
@@ -723,6 +741,7 @@ export class Humanoid {
     addressing: string,
     delivery?: string, // stage direction for the voice, passed to transcription
     emotion: SpeechEmotion = "neutral",
+    hostility?: string, // how the line was meant; feeds the anger gauge
   ) {
     // trim quotes if fully wrapped (avoids trimming text that starts of ends with quoted text)
     if (text.startsWith('"') && text.endsWith('"'))
@@ -750,6 +769,7 @@ export class Humanoid {
         addressing,
         delivery,
         emotion,
+        hostility,
       );
       return;
     }
@@ -771,6 +791,7 @@ export class Humanoid {
           addressing,
           delivery,
           emotion,
+          hostility,
         );
       });
   }
@@ -787,10 +808,11 @@ export class Humanoid {
     addressing: string,
     delivery?: string,
     emotion: SpeechEmotion = "neutral",
+    hostility?: string,
   ) {
-    // translation starts while the line waits in the TTS queue, so the
-    // subtitle is usually ready the moment the bubble appears
-    requestSubtitle(
+    // the line's slot in the queue waits on the translation, so the voice
+    // never starts before its subtitle is ready
+    const subtitled = requestSubtitle(
       this.character.name,
       roomOf(this.x, this.y).name,
       text,
@@ -804,6 +826,7 @@ export class Humanoid {
       delivery,
       emotion,
       language,
+      waitFor: subtitled,
       volume: verb === "yell" ? 1 : 0.7,
       onStart: () => {
         if (this.dead) return;
@@ -843,12 +866,14 @@ export class Humanoid {
     );
     // walls scope sound: talking reaches your room, yelling also reaches adjacent rooms
     const myRoom = roomOf(this.x, this.y);
+    const heardBy: Humanoid[] = [];
     for (const other of world) {
       if (other === this || other.dead) continue;
       const otherRoom = roomOf(other.x, other.y);
       const sameRoom = otherRoom === myRoom;
       const adjacent = myRoom.doors.includes(otherRoom.name);
       if (!sameRoom && !(verb === "yell" && adjacent)) continue;
+      heardBy.push(other);
       const compose = (heard: string) =>
         sameRoom
           ? `You heard ${this.character.name} ${verb}${addressing === "everyone in the room" ? "" : ` to ${addressing}`} in ${SPEECH_LANGUAGE_NAMES[language]}: "${heard}"`
@@ -869,6 +894,9 @@ export class Humanoid {
         now + HEARD_REACTION_MS + Math.random() * 2000,
       );
     }
+    // the same set the line actually reached — a barbed remark can't needle
+    // someone through a wall it never carried through
+    if (hostility) feelSpeech(this, heardBy, hostility, verb, world);
   }
 
   // waypoint path into another room: line up in front of the door, pass
@@ -978,6 +1006,9 @@ export class Humanoid {
       target.facing = facingOf(this.x - target.x, this.y - target.y);
 
       target.takeDamage(part, damage, world, at);
+      // the intent is spent the moment it lands: no grace timer to run out, and
+      // nobody else takes the role afterwards
+      if (target.dead) this.hasKilled = true;
       this.remember(`You ${verb.past} ${target.character.name}'s ${part}.`);
       if (!target.dead) {
         target.remember(`${this.character.name} ${verb.past} your ${part}!`);

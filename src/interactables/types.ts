@@ -73,6 +73,12 @@ export abstract class Interactable {
   onGroundTools(_humanoid: Humanoid): SimTool[] {
     return [];
   }
+
+  // an amusement: something to do purely for its own sake. Offered to everyone
+  // except a humanoid with murder on their mind, who would otherwise stand at
+  // the cabinet playing rhythm games because it is the one concrete, zero-risk
+  // action in the room and the intent is only prose.
+  distraction = false;
 }
 
 // items live either in a Room's interactables array (with a position) or in
@@ -82,6 +88,14 @@ export abstract class Item extends Interactable {
 
   inInventoryTools(_humanoid: Humanoid): SimTool[] {
     return [];
+  }
+
+  // whether this person may take it right now. It still shows up in the room's
+  // description when this is false — it is there to be seen, just not carried
+  // off — but pick_up won't offer it, so the model never picks a move it can't
+  // make.
+  canBeTakenBy(_humanoid: Humanoid): boolean {
+    return true;
   }
 }
 

@@ -42,7 +42,14 @@ export function playCutscene(
   options?: { openFade?: boolean },
 ) {
   if (playing || sequence.length === 0) return;
-  shots = sequence;
+  // a shot whose duration is NaN or non-positive never advances: `shotT >= NaN`
+  // is false, so the while-loop below never fires and the cutscene runs forever
+  // — and a cutscene freezes every room, which reads as the whole game hanging
+  shots = sequence.map((shot) =>
+    Number.isFinite(shot.duration) && shot.duration > 0
+      ? shot
+      : { ...shot, duration: 2 },
+  );
   index = 0;
   shotT = 0;
   elapsed = 0;
@@ -70,6 +77,12 @@ export function updateCutscene(dt: number) {
   if (!playing) return;
   shotT += dt;
   elapsed += dt;
+  // backstop: however the per-shot arithmetic goes wrong, the world does not
+  // stay frozen past the sequence's own length
+  if (elapsed > total + 2) {
+    endCutscene();
+    return;
+  }
   while (shotT >= shots[index]!.duration) {
     shotT -= shots[index]!.duration;
     index++;

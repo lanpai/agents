@@ -1,3 +1,4 @@
+import { HOSTILITY_FIELD } from "./say";
 import { simNow } from "../time";
 import {
   speechEmotion,
@@ -58,6 +59,7 @@ export const yell: SimTool = {
               humanoid.character.voice.routedVoice,
             ),
           },
+          hostility: HOSTILITY_FIELD,
           ...speechToolFields(humanoid, world, true),
         },
         required: [
@@ -65,6 +67,7 @@ export const yell: SimTool = {
           "pronunciations",
           "delivery",
           "emotion",
+          "hostility",
           "language",
           "addressing",
         ],
@@ -89,6 +92,7 @@ export const yell: SimTool = {
         addressing,
         typeof input.delivery === "string" ? input.delivery : undefined,
         speechEmotion(input.emotion, humanoid.character.voice.routedVoice),
+        typeof input.hostility === "string" ? input.hostility : undefined,
       );
       // logging happens inside say(), with the line the world actually hears
     }
