@@ -10,12 +10,8 @@ export class DDRPlayer extends Status {
   describeStatus(humanoid: Humanoid, viewer: Humanoid) {
     if (humanoid !== viewer) return null;
 
-    if (this.timeSinceLastPlayed > 6 * MINUTE) {
-      return "You desperately need to play DDR on the Dance Dance Revolution cabinet in the arcade room. You are in agony and incredibly easy to aggravate right now because of your need to play.";
-    }
-
     if (this.timeSinceLastPlayed > 3 * MINUTE) {
-      return "You need to go play DDR on the Dance Dance Revolution cabinet in the arcade room. You are irritable right now because of your need to play.";
+      return "You need to go play DDR on the Dance Dance Revolution cabinet in the arcade room right now. You are irritable right now because of your need to play.";
     }
 
     if (this.timeSinceLastPlayed > 1 * MINUTE) {

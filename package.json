@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
-    "klattsch": "^0.7.0"
+    "klattsch": "^0.7.0",
+    "qrcode-generator": "^2.0.4"
   }
 }
