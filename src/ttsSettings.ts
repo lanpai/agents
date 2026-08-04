@@ -1,8 +1,9 @@
-const STORAGE_KEY = "sim:qwen-tts-url";
+const STORAGE_KEY = "sim:qwen-routed-tts-url";
 
-export const DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:9001";
+export const DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:8092";
 export const TTS_SERVER_PRESETS = [
   DEFAULT_TTS_SERVER_URL,
+  "http://127.0.0.1:9001",
   "http://127.0.0.1:8094",
 ] as const;
 

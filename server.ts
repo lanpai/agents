@@ -1,5 +1,10 @@
 import "bun";
 import Anthropic from "@anthropic-ai/sdk";
+import { buildRoutedIclFields, isRoutedVoice } from "./routedTts";
+import {
+  SPEECH_EMOTIONS,
+  type SpeechEmotion,
+} from "./src/speechEmotion";
 
 // which model serves agent decisions; the frontend always speaks Anthropic
 // shapes — non-sonnet paths translate to/from OpenAI-compatible APIs
@@ -85,28 +90,62 @@ type TtsRequest = {
   speakerEmbedding?: number[];
   voice?: string;
   serverUrl?: string;
+  routedVoice?: string;
+  emotion?: string;
 };
 
 const QWEN_TTS_URL = (Bun.env.QWEN_TTS_URL ?? "http://127.0.0.1:9001").replace(
   /\/$/,
   "",
 );
-const QWEN_TTS_MODEL = Bun.env.QWEN_TTS_MODEL ?? "/opt/models/qwen3-tts";
+const QWEN_TTS_ALLOWED_HOSTS = new Set(
+  (Bun.env.QWEN_TTS_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean),
+);
+try {
+  QWEN_TTS_ALLOWED_HOSTS.add(new URL(QWEN_TTS_URL).hostname.toLowerCase());
+} catch {
+  // The startup request path will surface an invalid configured URL.
+}
+const QWEN_TTS_MODEL = Bun.env.QWEN_TTS_MODEL;
 const QWEN_TTS_DEFAULT_VOICE =
   Bun.env.QWEN_TTS_DEFAULT_VOICE ?? "web_nori_v0";
+const qwenModelCache = new Map<string, Promise<string>>();
+
+function qwenModel(ttsUrl: string): Promise<string> {
+  if (QWEN_TTS_MODEL) return Promise.resolve(QWEN_TTS_MODEL);
+  let promise = qwenModelCache.get(ttsUrl);
+  if (!promise) {
+    promise = fetch(`${ttsUrl}/v1/models`, {
+      signal: AbortSignal.timeout(5000),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`model discovery ${response.status}`);
+        const listing = (await response.json()) as {
+          data?: { id?: unknown }[];
+        };
+        const model = listing.data?.[0]?.id;
+        if (typeof model !== "string" || model.length === 0) {
+          throw new Error("model discovery returned no model id");
+        }
+        return model;
+      })
+      .catch(() => "/opt/models/qwen3-tts");
+    qwenModelCache.set(ttsUrl, promise);
+  }
+  return promise;
+}
 
 function requestTtsUrl(value: unknown): string | null {
   if (value === undefined) return QWEN_TTS_URL;
   if (typeof value !== "string") return null;
   try {
     const url = new URL(value);
-    const isLoopback =
-      url.hostname === "127.0.0.1" ||
-      url.hostname === "localhost" ||
-      url.hostname === "[::1]";
     if (
       (url.protocol !== "http:" && url.protocol !== "https:") ||
-      !isLoopback ||
+      !isAllowedTtsHost(url.hostname) ||
       !url.port ||
       url.username ||
       url.password
@@ -116,6 +155,26 @@ function requestTtsUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function isAllowedTtsHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (
+    host === "127.0.0.1" ||
+    host === "localhost" ||
+    host === "[::1]" ||
+    host.endsWith(".ts.net") ||
+    QWEN_TTS_ALLOWED_HOSTS.has(host)
+  )
+    return true;
+  const ipv4 = host.split(".").map(Number);
+  return (
+    ipv4.length === 4 &&
+    ipv4.every((part) => Number.isInteger(part) && part >= 0 && part <= 255) &&
+    ipv4[0] === 100 &&
+    ipv4[1]! >= 64 &&
+    ipv4[1]! <= 127
+  );
 }
 
 async function callQwenTts(req: Request): Promise<Response> {
@@ -136,7 +195,10 @@ async function callQwenTts(req: Request): Promise<Response> {
   const ttsUrl = requestTtsUrl(body.serverUrl);
   if (!ttsUrl) {
     return Response.json(
-      { error: "serverUrl must be an http(s) loopback URL with a port" },
+      {
+        error:
+          "serverUrl must be an allowed local/Tailscale http(s) URL with a port",
+      },
       { status: 400 },
     );
   }
@@ -157,14 +219,38 @@ async function callQwenTts(req: Request): Promise<Response> {
   }
 
   const payload: Record<string, unknown> = {
-    model: QWEN_TTS_MODEL,
+    model: await qwenModel(ttsUrl),
     input: body.text,
     task_type: "Base",
     language: "English",
     stream: true,
     response_format: "pcm",
+    max_new_tokens: 4096,
   };
-  if (embedding) {
+  let routedRoute: string | undefined;
+  if (body.routedVoice !== undefined) {
+    if (!isRoutedVoice(body.routedVoice)) {
+      return Response.json({ error: "unknown routedVoice" }, { status: 400 });
+    }
+    const emotion =
+      typeof body.emotion === "string" &&
+      (SPEECH_EMOTIONS as readonly string[]).includes(body.emotion)
+        ? (body.emotion as SpeechEmotion)
+        : "neutral";
+    try {
+      const { route, ...fields } = await buildRoutedIclFields(
+        body.routedVoice,
+        emotion,
+      );
+      routedRoute = route;
+      Object.assign(payload, fields);
+    } catch (error) {
+      return Response.json(
+        { error: `routed TTS assets unavailable: ${String(error)}` },
+        { status: 500 },
+      );
+    }
+  } else if (embedding) {
     payload.speaker_embedding = embedding;
     payload.x_vector_only_mode = true;
   } else {
@@ -202,6 +288,12 @@ async function callQwenTts(req: Request): Promise<Response> {
       "content-type": upstream.headers.get("content-type") ?? "audio/pcm",
       "cache-control": "no-store",
       "x-audio-sample-rate": "24000",
+      ...(body.routedVoice
+        ? {
+            "x-tts-voice": body.routedVoice,
+            "x-tts-route": routedRoute ?? "neutral",
+          }
+        : {}),
     },
   });
 }

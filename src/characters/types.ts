@@ -1,8 +1,20 @@
 import type { Humanoid } from "../humanoid";
 
+export type RoutedVoice =
+  | "cory"
+  | "eric"
+  | "hirai"
+  | "leland"
+  | "tiffany"
+  | "tyler"
+  | "yanghua"
+  | "yp";
+
 // Qwen uses speakerEmbedding/ttsVoice when available. The formant settings
 // remain as a browser-only fallback when the Qwen server is unavailable.
 export type Voice = {
+  // Portable routed-ICL pack used for neutral and emotional Qwen speech.
+  routedVoice?: RoutedVoice;
   // Qwen3-TTS Base embeddings are 1024-dim (0.6B) or 2048-dim (1.7B).
   // Keep this optional while a character is waiting for its final embedding.
   speakerEmbedding?: readonly number[];

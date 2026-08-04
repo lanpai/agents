@@ -7,6 +7,7 @@ import workletUrl from "klattsch/formant-worklet.js?url";
 import { recordAgentCall } from "./calls";
 import type { Voice } from "./characters/types";
 import { getTtsServerUrl } from "./ttsSettings";
+import type { SpeechEmotion } from "./speechEmotion";
 
 const MAX_QUEUE = 8;
 const PHONEME_TIMEOUT_MS = 15000;
@@ -19,6 +20,7 @@ type Line = {
   speaker: string; // character name, for the debug call log
   voice: Voice;
   delivery?: string; // stage direction ("flat and cold", "almost a whisper")
+  emotion: SpeechEmotion;
   volume: number;
   onStart?: () => void;
   onEnd?: () => void;
@@ -86,6 +88,7 @@ export function speak(
     speaker: string;
     voice: Voice;
     delivery?: string;
+    emotion?: SpeechEmotion;
     volume?: number;
     onStart?: () => void;
     onEnd?: () => void;
@@ -94,7 +97,7 @@ export function speak(
   if (!unlocked || text.length === 0) return false;
   if (queued >= MAX_QUEUE) return false; // drop speech rather than building a backlog
   queued++;
-  queue.push({ text, volume: 0.8, ...line });
+  queue.push({ text, volume: 0.8, emotion: "neutral", ...line });
   void pump();
   return true;
 }
@@ -176,12 +179,15 @@ async function playQwen(
         text: line.text,
         speakerEmbedding: line.voice.speakerEmbedding,
         voice: line.voice.ttsVoice,
+        routedVoice: line.voice.routedVoice,
+        emotion: line.emotion,
         serverUrl: getTtsServerUrl(),
       }),
     });
     if (!response.ok || !response.body) {
       throw new Error(`TTS API ${response.status}`);
     }
+    const route = response.headers.get("x-tts-route");
 
     audio.gain.gain.value = line.volume;
     const reader = response.body.getReader();
@@ -239,7 +245,9 @@ async function playQwen(
 
     if (nextStartAt === null) throw new Error("TTS API returned no PCM audio");
     record.status = "ok";
-    record.result = [`${receivedBytes} PCM bytes`];
+    record.result = [
+      `${line.voice.routedVoice ?? "default"}/${route ?? line.emotion}: ${receivedBytes} PCM bytes`,
+    ];
     await delay(
       Math.max(0, (nextStartAt - audio.context.currentTime) * 1000) + 20,
     );

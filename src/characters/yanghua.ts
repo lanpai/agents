@@ -12,6 +12,7 @@ export const yanghua: Character = {
 
   // Animated while excited, flat while bored, and sharply focused when angry
   voice: {
+    routedVoice: "yanghua",
     baseF0: 132,
     rate: 118,
     scale: 1.04,

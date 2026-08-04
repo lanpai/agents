@@ -22,6 +22,7 @@ import { requestSubtitle } from "./subtitles";
 import { simNow } from "./time";
 import { PALETTE, silhouette, mulberry32, hashSeed } from "./theme";
 import type { Character, SpriteSheet } from "./characters/types";
+import type { SpeechEmotion } from "./speechEmotion";
 import type { Status } from "./statuses/types";
 
 export const UNITS_PER_FOOT = 10;
@@ -565,6 +566,7 @@ export class Humanoid {
     now: number,
     verb: "say" | "yell",
     delivery?: string, // stage direction for the voice, passed to transcription
+    emotion: SpeechEmotion = "neutral",
   ) {
     // trim quotes if fully wrapped (avoids trimming text that starts of ends with quoted text)
     if (text.startsWith('"') && text.endsWith('"'))
@@ -580,7 +582,7 @@ export class Humanoid {
 
     const warp = outgoingSpeechWarp(this);
     if (!warp) {
-      this.deliverLine(text, world, now, verb, delivery);
+      this.deliverLine(text, world, now, verb, delivery, emotion);
       return;
     }
     // hold the room frozen while the line is being warped, exactly like a
@@ -591,7 +593,7 @@ export class Humanoid {
       .then((warped) => {
         this.speaking = false;
         if (this.dead) return;
-        this.deliverLine(warped, world, simNow(), verb, delivery);
+        this.deliverLine(warped, world, simNow(), verb, delivery, emotion);
       });
   }
 
@@ -603,6 +605,7 @@ export class Humanoid {
     now: number,
     verb: "say" | "yell",
     delivery?: string,
+    emotion: SpeechEmotion = "neutral",
   ) {
     // translation starts while the line waits in the TTS queue, so the
     // subtitle is usually ready the moment the bubble appears
@@ -613,6 +616,7 @@ export class Humanoid {
       speaker: this.character.name,
       voice: this.character.voice,
       delivery,
+      emotion,
       volume: verb === "yell" ? 1 : 0.7,
       onStart: () => {
         if (this.dead) return;

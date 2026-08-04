@@ -9,6 +9,7 @@ export const eric: Character = {
   },
   description: "",
   voice: {
+    routedVoice: "eric",
     baseF0: 130,
     rate: 75,
     scale: 1.0,
