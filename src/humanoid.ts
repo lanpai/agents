@@ -19,6 +19,12 @@ import {
 import { queueBeat, speak } from "./tts";
 import { playCutscene, type Shot } from "./cutscene";
 import { requestSubtitle } from "./subtitles";
+import {
+  claimRevealShots,
+  reportKill,
+  revealAvailable,
+  REVEAL_TOTAL_MS as VOTE_REVEAL_MS,
+} from "./voting";
 import { simNow } from "./time";
 import { PALETTE, silhouette, mulberry32, hashSeed } from "./theme";
 import type {
@@ -27,6 +33,12 @@ import type {
   SpriteSheet,
 } from "./characters/types";
 import { whitecatSprites } from "./characters/whitecat";
+import type { SpeechEmotion } from "./speechEmotion";
+import {
+  getSpeechMode,
+  SPEECH_LANGUAGE_NAMES,
+  type SpeechLanguage,
+} from "./speechLanguage";
 import { spriteFor, spriteReady } from "./sprites";
 import { feelSpeech, rollTemper } from "./anger";
 import type { Status } from "./statuses/types";
@@ -367,16 +379,17 @@ function onFloor(x: number, y: number): boolean {
 }
 
 // steering stops bodies from walking into each other; this is the backstop for
-// when they end up sharing a spot anyway — someone spawning on a neighbour, a
-// corridor too narrow to lean out of, a walker pinned against a corpse. Each
-// overlapping pair is eased apart along the line between them.
+// when they end up sharing a spot anyway — someone spawning on a neighbour, or
+// a corridor too narrow to lean out of. Each overlapping pair is eased apart
+// along the line between them.
 export function separateBodies(world: Humanoid[]) {
   for (let i = 0; i < world.length; i++) {
     for (let j = i + 1; j < world.length; j++) {
       const a = world[i]!;
       const b = world[j]!;
-      // two corpses lie where they fell; nothing left to push them
-      if (a.dead && b.dead) continue;
+      // the dead have no collision at all: the living step over a body, so
+      // a corpse dropped in a doorway can never wall the door off
+      if (a.dead || b.dead) continue;
       let dx = b.x - a.x;
       let dy = b.y - a.y;
       let distance = Math.hypot(dx, dy);
@@ -390,21 +403,17 @@ export function separateBodies(world: Humanoid[]) {
         distance = 0.001;
       }
       const nudge = ((SEPARATION - distance) / distance) * SEPARATION_RESPONSE;
-      // the dead are immovable, so a body pushes the living clear of it while
-      // staying put itself; between two living, each gives half the ground
-      const aShare = a.dead ? 0 : b.dead ? 1 : 0.5;
-      const bShare = b.dead ? 0 : a.dead ? 1 : 0.5;
       // a push that would put someone in a wall is dropped rather than
       // clamped — better to briefly overlap than to stand inside the masonry
-      const ax = a.x - dx * nudge * aShare;
-      const ay = a.y - dy * nudge * aShare;
-      if (aShare > 0 && onFloor(ax, ay)) {
+      const ax = a.x - dx * nudge * 0.5;
+      const ay = a.y - dy * nudge * 0.5;
+      if (onFloor(ax, ay)) {
         a.x = ax;
         a.y = ay;
       }
-      const bx = b.x + dx * nudge * bShare;
-      const by = b.y + dy * nudge * bShare;
-      if (bShare > 0 && onFloor(bx, by)) {
+      const bx = b.x + dx * nudge * 0.5;
+      const by = b.y + dy * nudge * 0.5;
+      if (onFloor(bx, by)) {
         b.x = bx;
         b.y = by;
       }
@@ -444,11 +453,15 @@ export function updateEmoteHolds(world: Humanoid[], dt: number) {
 // speech filters contributed by statuses (e.g. Divine Madness): the first
 // status offering a warp wins. Outgoing rewrites what the world hears when
 // this humanoid speaks; incoming rewrites what this humanoid hears
-function outgoingSpeechWarp(speaker: Humanoid) {
+function outgoingSpeechWarp(
+  speaker: Humanoid,
+): ((text: string) => Promise<string>) | null {
   return null;
 }
 
-function incomingSpeechWarp(hearer: Humanoid) {
+function incomingSpeechWarp(
+  hearer: Humanoid,
+): ((text: string, speaker: string) => Promise<string>) | null {
   return null;
 }
 
@@ -538,7 +551,12 @@ export class Humanoid {
   // an interaction queued from too far away (e.g. playing an arcade cabinet):
   // update() runs the act the moment the spot is within arm's reach
   pendingUse: { x: number; y: number; act: () => void } | null = null;
-  speech: { text: string; until: number } | null = null;
+  speech: {
+    text: string;
+    until: number;
+    language: SpeechLanguage;
+    addressing: string;
+  } | null = null;
   emote: { text: string } | null = null; // *action* bubble, lives as long as its hold
   // freezes the room until the camera has watched the emote (wall-time seconds)
   emoteHold: { seenFor: number; heldFor: number } | null = null;
@@ -642,6 +660,8 @@ export class Humanoid {
     let steerY = 0;
     for (const other of world) {
       if (other === this) continue;
+      // the dead have no collision — walkers step over a body, not around it
+      if (other.dead) continue;
       // the one they're closing on isn't an obstacle — it's the point. Veering
       // off them would have the follower orbit their heels, and the attacker
       // circle the person they mean to hit.
@@ -672,27 +692,44 @@ export class Humanoid {
 
   say(
     text: string,
+    spokenText: string,
     world: Humanoid[],
     now: number,
     verb: "say" | "yell",
+    language: SpeechLanguage,
+    addressing: string,
     delivery?: string, // stage direction for the voice, passed to transcription
+    emotion: SpeechEmotion = "neutral",
     hostility?: string, // how the line was meant; feeds the anger gauge
   ) {
     // trim quotes if fully wrapped (avoids trimming text that starts of ends with quoted text)
     if (text.startsWith('"') && text.endsWith('"'))
       text = text.substring(1, text.length - 1);
+    if (spokenText.startsWith('"') && spokenText.endsWith('"'))
+      spokenText = spokenText.substring(1, spokenText.length - 1);
 
     // talking roots you in place: any walk or follow in progress is dropped
     this.standStill();
     // the speaker remembers what they meant to say, even when a status warps
     // what actually leaves their mouth
     this.remember(
-      verb === "yell" ? `You yelled: "${text}"` : `You said: "${text}"`,
+      `You ${verb === "yell" ? "yelled" : "said"}${addressing === "everyone in the room" ? "" : ` to ${addressing}`} in ${SPEECH_LANGUAGE_NAMES[language]}: "${text}"`,
     );
 
     const warp = outgoingSpeechWarp(this);
     if (!warp) {
-      this.deliverLine(text, world, now, verb, delivery, hostility);
+      this.deliverLine(
+        text,
+        spokenText,
+        world,
+        now,
+        verb,
+        language,
+        addressing,
+        delivery,
+        emotion,
+        hostility,
+      );
       return;
     }
     // hold the room frozen while the line is being warped, exactly like a
@@ -703,7 +740,18 @@ export class Humanoid {
       .then((warped) => {
         this.speaking = false;
         if (this.dead) return;
-        this.deliverLine(warped, world, simNow(), verb, delivery, hostility);
+        this.deliverLine(
+          warped,
+          warped === text ? spokenText : warped,
+          world,
+          simNow(),
+          verb,
+          language,
+          addressing,
+          delivery,
+          emotion,
+          hostility,
+        );
       });
   }
 
@@ -711,25 +759,41 @@ export class Humanoid {
   // in earshot hears (each hearer's own statuses may warp it once more)
   private deliverLine(
     text: string,
+    spokenText: string,
     world: Humanoid[],
     now: number,
     verb: "say" | "yell",
+    language: SpeechLanguage,
+    addressing: string,
     delivery?: string,
+    emotion: SpeechEmotion = "neutral",
     hostility?: string,
   ) {
     // translation starts while the line waits in the TTS queue, so the
     // subtitle is usually ready the moment the bubble appears
-    requestSubtitle(this.character.name, roomOf(this.x, this.y).name, text);
+    requestSubtitle(
+      this.character.name,
+      roomOf(this.x, this.y).name,
+      text,
+      language,
+    );
     // the bubble tracks the voice: it appears when the line starts playing
     // and clears when it finishes, not on a sim-time timer
-    const spoken = speak(text, {
+    const spoken = speak(spokenText, {
       speaker: this.character.name,
       voice: this.character.voice,
       delivery,
+      emotion,
+      language,
       volume: verb === "yell" ? 1 : 0.7,
       onStart: () => {
         if (this.dead) return;
-        this.speech = { text, until: Number.POSITIVE_INFINITY };
+        this.speech = {
+          text,
+          until: Number.POSITIVE_INFINITY,
+          language,
+          addressing,
+        };
         // the camera cuts when the line becomes audible, not when it was
         // queued: with lines queued from different rooms, play order —
         // not decision order — picks who is on screen
@@ -744,11 +808,16 @@ export class Humanoid {
     // no TTS (unsupported browser or full queue): fall back to a timed bubble,
     // and focus now since there is no utterance start to cut on
     if (!spoken) {
-      this.speech = { text, until: now + 4000 + text.length * 60 };
+      this.speech = {
+        text,
+        until: now + 4000 + text.length * 60,
+        language,
+        addressing,
+      };
       focusCamera([this]);
     }
     logQuietAction(
-      `${this.character.name} ${verb === "yell" ? "yells" : "says"}: "${text}"`,
+      `${this.character.name} ${verb === "yell" ? "yells" : "says"}${addressing === "everyone in the room" ? "" : ` to ${addressing}`} in ${SPEECH_LANGUAGE_NAMES[language]}: "${text}"`,
       this,
     );
     // walls scope sound: talking reaches your room, yelling also reaches adjacent rooms
@@ -762,9 +831,12 @@ export class Humanoid {
       if (!sameRoom && !(verb === "yell" && adjacent)) continue;
       heardBy.push(other);
       const compose = (heard: string) =>
-        sameRoom
-          ? `You heard ${this.character.name} ${verb}: "${heard}"`
-          : `You heard ${this.character.name} yell from ${myRoom.promptName}: "${heard}"`;
+        getSpeechMode() !== "presentation" &&
+        !other.character.language.known.includes(language)
+          ? `You heard ${this.character.name} speak in ${SPEECH_LANGUAGE_NAMES[language]}, but you could not understand the words.`
+          : sameRoom
+          ? `You heard ${this.character.name} ${verb}${addressing === "everyone in the room" ? "" : ` to ${addressing}`} in ${SPEECH_LANGUAGE_NAMES[language]}: "${heard}"`
+          : `You heard ${this.character.name} yell in ${SPEECH_LANGUAGE_NAMES[language]} from ${myRoom.promptName}: "${heard}"`;
       const hearWarp = incomingSpeechWarp(other);
       if (hearWarp) {
         // the hearer's own filter rewrites the line before it lands in memory
@@ -929,6 +1001,13 @@ export class Humanoid {
         //     duration: 2.4,
         //   });
         // }
+        // a kill folds the killer reveal into this same cutscene — one
+        // continuous sequence, so the camera never pops back to the sim
+        // between the blow and the reveal
+        if (target.dead) {
+          const reveal = claimRevealShots();
+          if (reveal) shots.push(...reveal);
+        }
         playCutscene(shots, { openFade: false });
       }
     };
@@ -939,8 +1018,13 @@ export class Humanoid {
     }
     // the stab scene takes its turn in the same one-at-a-time queue as speech
     // and action bubbles, so it never opens over a line still playing in
-    // another room; the fight's room stays frozen while it waits
-    const queued = queueBeat(stabSceneMs(this), {
+    // another room; the fight's room stays frozen while it waits. A lethal
+    // blow reserves extra time for the killer-reveal shots it will append.
+    const willDie =
+      (part === "head" || part === "torso") && target.body[part] <= damage;
+    const sceneMs =
+      stabSceneMs(this) + (willDie && revealAvailable() ? VOTE_REVEAL_MS : 0);
+    const queued = queueBeat(sceneMs, {
       onStart: strike,
       onEnd: () => {
         this.speaking = false;
@@ -969,6 +1053,9 @@ export class Humanoid {
   die(world: Humanoid[], now: number) {
     if (this.dead) return;
     this.dead = true;
+    // any death closes audience voting; the killer-reveal shots are folded
+    // into the stab cutscene itself, over in landStrike
+    reportKill();
     // the collapse plays out and then stays put — its last frame is the corpse
     this.playAction("stabbed", this.facing);
     logAction(`${this.character.name} dies!`, this);

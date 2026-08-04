@@ -12,6 +12,9 @@ export type Shot = {
   duration: number; // wall-clock seconds
   label?: string; // small kicker above the title, e.g. "starring"
   title?: string; // the big line, e.g. "CORY"
+  // scoreboard rows drawn centered on screen (e.g. the audience's top
+  // detectives after the reveal); the first row draws largest
+  board?: { name: string; points: number }[];
 };
 
 const TEXT_FADE_IN = 0.5;
@@ -158,6 +161,61 @@ export function drawCutscene(ctx: CanvasRenderingContext2D) {
       ctx.fillStyle = "#fff";
       ctx.fillText(shot.title.toUpperCase(), w / 2, h - bar - 22);
     }
+    ctx.restore();
+  }
+
+  // centered scoreboard rows, fading with the shot like the credit text
+  if (shot.board && alpha > 0) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#000";
+    ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
+    ctx.shadowBlur = 12;
+    const rows = shot.board;
+    const rowH = 38;
+    const top = h / 2 - ((rows.length - 1) * rowH) / 2 - 30;
+    if (rows.length === 0) {
+      ctx.font = "700 22px sans-serif";
+      ctx.lineWidth = 4;
+      ctx.fillStyle = "#c7cfdd";
+      ctx.textAlign = "center";
+      ctx.strokeText("NO VOTES", w / 2, h / 2 - 30);
+      ctx.fillText("NO VOTES", w / 2, h / 2 - 30);
+    }
+    // measure both columns at each row's own font, then center the whole
+    // block: names left-aligned, points right-aligned, columns lined up
+    const gap = 28;
+    const rowFont = (i: number) => `700 ${i === 0 ? 28 : 20}px sans-serif`;
+    let nameWidth = 0;
+    let pointsWidth = 0;
+    rows.forEach((row, i) => {
+      ctx.font = rowFont(i);
+      nameWidth = Math.max(
+        nameWidth,
+        ctx.measureText(`${i + 1}. ${row.name}`).width,
+      );
+      pointsWidth = Math.max(
+        pointsWidth,
+        ctx.measureText(String(row.points)).width,
+      );
+    });
+    const blockLeft = w / 2 - (nameWidth + gap + pointsWidth) / 2;
+    rows.forEach((row, i) => {
+      const y = top + i * rowH;
+      ctx.font = rowFont(i);
+      ctx.lineWidth = i === 0 ? 5 : 4;
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "left";
+      ctx.strokeText(`${i + 1}. ${row.name}`, blockLeft, y);
+      ctx.fillText(`${i + 1}. ${row.name}`, blockLeft, y);
+      ctx.fillStyle = "#c7cfdd";
+      ctx.textAlign = "right";
+      const pointsX = blockLeft + nameWidth + gap + pointsWidth;
+      ctx.strokeText(String(row.points), pointsX, y);
+      ctx.fillText(String(row.points), pointsX, y);
+    });
     ctx.restore();
   }
 

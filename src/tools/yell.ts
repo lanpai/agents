@@ -1,7 +1,18 @@
 import { HOSTILITY_FIELD } from "./say";
 import { simNow } from "../time";
+import {
+  speechEmotion,
+  speechEmotionDescription,
+  speechEmotionsForVoice,
+} from "../speechEmotion";
 import { roommateNames } from "./shared";
 import type { SimTool } from "./types";
+import {
+  speechAudienceFor,
+  speechLanguageFor,
+  speechToolFields,
+} from "./speech";
+import { spokenMessageFromWritten } from "../spokenMessage";
 
 export const yell: SimTool = {
   name: "yell",
@@ -17,29 +28,70 @@ export const yell: SimTool = {
       input_schema: {
         type: "object",
         properties: {
-          message: {
+          written_message: {
             type: "string",
-            description: "What to yell, under 15 words, kept short and natural",
+            description:
+              "What appears in the speech bubble and dialogue history, under 15 words, kept short and natural. Preserve normal written forms such as 5.0, SS+, C++, and acronyms.",
+          },
+          pronunciations: {
+            type: "array",
+            maxItems: 12,
+            description:
+              'Optional exact token substitutions used only to make TTS pronunciation unambiguous. Include only compact numbers, symbols, versions, or acronyms from written_message, for example {"written":"5.0","spoken":"five point zero"} or {"written":"SS+","spoken":"S S plus"}. Never include ordinary words or phrases. Use [] when no token needs help.',
+            items: {
+              type: "object",
+              properties: {
+                written: { type: "string" },
+                spoken: { type: "string" },
+              },
+              required: ["written", "spoken"],
+            },
           },
           delivery: {
             type: "string",
             description:
               'How the line is yelled, in a few words (e.g. "furious, spitting every word", "booming and jovial", "cracking with panic"). This should only be vocal descriptions, not physical.',
           },
+          emotion: {
+            type: "string",
+            enum: [...speechEmotionsForVoice(humanoid.character.voice.routedVoice)],
+            description: speechEmotionDescription(
+              humanoid.character.voice.routedVoice,
+            ),
+          },
           hostility: HOSTILITY_FIELD,
+          ...speechToolFields(humanoid, world, true),
         },
-        required: ["message", "delivery", "hostility"],
+        required: [
+          "written_message",
+          "pronunciations",
+          "delivery",
+          "emotion",
+          "hostility",
+          "language",
+          "addressing",
+        ],
       },
     };
   },
   execute(humanoid, world, input) {
-    if (typeof input.message === "string" && input.message.length > 0) {
+    const written =
+      typeof input.written_message === "string"
+        ? input.written_message
+        : input.message;
+    if (typeof written === "string" && written.length > 0) {
+      const spoken = spokenMessageFromWritten(written, input.pronunciations);
+      const addressing = speechAudienceFor(humanoid, world, input.addressing);
       humanoid.say(
-        input.message,
+        written,
+        spoken,
         world,
         simNow(),
         "yell",
+        speechLanguageFor(humanoid, world, input.language, addressing, true),
+        addressing,
         typeof input.delivery === "string" ? input.delivery : undefined,
+        speechEmotion(input.emotion, humanoid.character.voice.routedVoice),
         typeof input.hostility === "string" ? input.hostility : undefined,
       );
       // logging happens inside say(), with the line the world actually hears

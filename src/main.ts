@@ -33,6 +33,7 @@ import { initSidebar, isSidebarOpen } from "./sidebar";
 import { drawSubtitles } from "./subtitles";
 import { advanceSimTime, simNow } from "./time";
 import { PALETTE } from "./theme";
+import { drawVoteBoard, initVoting } from "./voting";
 import { cory } from "./characters/cory";
 import { eric } from "./characters/eric";
 import { hirai } from "./characters/hirai";
@@ -81,14 +82,21 @@ setInterval(save, 3000);
 const beforeUnload = save;
 window.addEventListener("beforeunload", beforeUnload);
 
-export function clearData() {
+export async function clearData() {
   window.removeEventListener("beforeunload", beforeUnload);
   localStorage.clear();
+  // a fresh sim means a fresh audience round; keepalive lets the request
+  // survive the reload racing it
+  await fetch("/api/vote/reset", { method: "POST", keepalive: true }).catch(
+    () => {},
+  );
   window.location.reload();
 }
 (window as any)["clearData"] = clearData;
 
 initSelection(canvas, humanoids);
+// the audience guesses the killer from their phones (/vote.html)
+initVoting(humanoids);
 
 let paused = false;
 initSidebar({
@@ -149,7 +157,12 @@ function introShots(): Shot[] {
   });
   return shots;
 }
-playCutscene(introShots());
+// Iterating on the sim shouldn't require sitting through the credits after
+// every reload. Production still opens normally; add ?intro=1 to a dev URL
+// when working on the intro itself.
+const playIntro =
+  !import.meta.env.DEV || new URLSearchParams(window.location.search).has("intro");
+if (playIntro) playCutscene(introShots());
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -207,6 +220,7 @@ function draw(now: number) {
   drawSelectionBox(ctx);
   if (isSidebarOpen()) drawLog(ctx, selected);
   drawSubtitles(ctx, humanoids);
+  drawVoteBoard(ctx);
   drawCutscene(ctx);
 }
 

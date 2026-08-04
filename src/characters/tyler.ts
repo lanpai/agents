@@ -11,12 +11,14 @@ export const tyler: Character = {
   },
   description: "",
   voice: {
+    routedVoice: "tyler",
     baseF0: 130,
     rate: 75,
     scale: 1.0,
     effort: 0.35,
     aspiration: 0.2,
   },
+  language: { native: "en", known: ["en"] },
   initialMemory: "",
   describeHumanoid: () => "",
 
