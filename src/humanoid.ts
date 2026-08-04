@@ -619,58 +619,89 @@ export class Humanoid {
     world: Humanoid[],
     now: number,
   ) {
-    const room = roomOf(target.x, target.y);
-    for (const witness of world) {
-      if (witness === this || witness === target || witness.dead) continue;
-      if (roomOf(witness.x, witness.y) !== room) continue;
-      witness.remember(
-        `You saw ${this.character.name} ${verb.past} ${target.character.name}'s ${part}!`,
-      );
-      witness.nextThinkAt = Math.min(witness.nextThinkAt, now + 500);
-    }
+    const strike = () => {
+      if (this.dead) return; // struck down while waiting for the slot
+      if (target.dead) {
+        this.remember(
+          `You went to ${verb.present.replace(/e?s$/, "")} ${target.character.name}, but they are already dead.`,
+        );
+        return;
+      }
+      const at = simNow();
+      const room = roomOf(target.x, target.y);
+      for (const witness of world) {
+        if (witness === this || witness === target || witness.dead) continue;
+        if (roomOf(witness.x, witness.y) !== room) continue;
+        witness.remember(
+          `You saw ${this.character.name} ${verb.past} ${target.character.name}'s ${part}!`,
+        );
+        witness.nextThinkAt = Math.min(witness.nextThinkAt, at + 500);
+      }
 
-    // both fighters turn to face each other for the exchange. Punches have no
-    // art of their own, so they borrow the blade's swing.
-    this.playAction("stab", facingOf(target.x - this.x, target.y - this.y));
-    target.facing = facingOf(this.x - target.x, this.y - target.y);
+      // both fighters turn to face each other for the exchange. Punches have
+      // no art of their own, so they borrow the blade's swing.
+      this.playAction("stab", facingOf(target.x - this.x, target.y - this.y));
+      target.facing = facingOf(this.x - target.x, this.y - target.y);
 
-    target.takeDamage(part, damage, world, now);
-    this.remember(`You ${verb.past} ${target.character.name}'s ${part}.`);
-    if (!target.dead) {
-      target.remember(`${this.character.name} ${verb.past} your ${part}!`);
-      target.nextThinkAt = Math.min(target.nextThinkAt, now + 500);
-    }
-    // logEmote(
-    //   `${this.character.name} ${verb.present} ${target.character.name}'s ${part}`,
-    //   this,
-    //   target,
-    // );
+      target.takeDamage(part, damage, world, at);
+      this.remember(`You ${verb.past} ${target.character.name}'s ${part}.`);
+      if (!target.dead) {
+        target.remember(`${this.character.name} ${verb.past} your ${part}!`);
+        target.nextThinkAt = Math.min(target.nextThinkAt, at + 500);
+      }
+      // logEmote(
+      //   `${this.character.name} ${verb.present} ${target.character.name}'s ${part}`,
+      //   this,
+      //   target,
+      // );
 
-    // a stab is a scene: every room freezes and the camera cuts in tight
-    // under letterbox while the swing plays out; a kill earns a second shot
-    // lingering on the body. No fade from black — the blow is the cut.
-    if (verb.present === "stabs") {
-      const stab = this.character.sprite.stab;
-      const shots: Shot[] = [
-        {
-          x: (this.x + target.x) / 2,
-          y: (this.y + target.y) / 2 - 10,
-          zoomFrom: 4.5,
-          zoomTo: 6,
-          duration: (stab.frames * stab.frameMs + 800) / 1000,
-        },
-      ];
-      // if (target.dead) {
-      //   shots.push({
-      //     x: target.x,
-      //     y: target.y - 10,
-      //     zoomFrom: 5.5,
-      //     zoomTo: 6.2,
-      //     duration: 2.4,
-      //   });
-      // }
-      playCutscene(shots, { openFade: false });
+      // a stab is a scene: every room freezes and the camera cuts in tight
+      // under letterbox while the swing plays out. No fade from black — the
+      // blow is the cut.
+      if (verb.present === "stabs") {
+        const stab = this.character.sprite.stab;
+        const shots: Shot[] = [
+          {
+            x: (this.x + target.x) / 2,
+            y: (this.y + target.y) / 2 - 10,
+            zoomFrom: 4.5,
+            zoomTo: 6,
+            duration: (stab.frames * stab.frameMs + 800) / 1000,
+          },
+        ];
+        // if (target.dead) {
+        //   shots.push({
+        //     x: target.x,
+        //     y: target.y - 10,
+        //     zoomFrom: 5.5,
+        //     zoomTo: 6.2,
+        //     duration: 2.4,
+        //   });
+        // }
+        playCutscene(shots, { openFade: false });
+      }
+    };
+
+    if (verb.present !== "stabs") {
+      strike();
+      return;
     }
+    // the stab scene takes its turn in the same one-at-a-time queue as speech
+    // and action bubbles, so it never opens over a line still playing in
+    // another room; the fight's room stays frozen while it waits
+    const stab = this.character.sprite.stab;
+    const sceneMs = stab.frames * stab.frameMs + 800;
+    const queued = queueBeat(sceneMs, {
+      onStart: strike,
+      onEnd: () => {
+        this.speaking = false;
+      },
+    });
+    if (!queued) {
+      strike(); // queue full: land the blow now rather than drop it
+      return;
+    }
+    this.speaking = true;
   }
 
   takeDamage(part: BodyPart, amount: number, world: Humanoid[], now: number) {
