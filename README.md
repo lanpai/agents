@@ -36,9 +36,13 @@ For a non-routed character, `voice.speakerEmbedding` can hold a model-compatible
 1024- or 2048-element vector. Otherwise it uses `voice.ttsVoice`, then the
 default voice above. Routed characters use the portable pack described below.
 
-Press Tab in the UI to select the routed-compatible 8092 default, the
-9001/8094 presets, or enter another local
-server URL. The choice is saved per browser and applies to the next line.
+At UI startup the backend probes routed TTS in order: local
+`http://127.0.0.1:8092`, then
+`http://tinybox.alpaca-elnath.ts.net:8092`. If neither model endpoint responds,
+the UI selects the legacy server at `http://127.0.0.1:9001`; if that request
+later fails, the browser formant voice remains the final fallback. Press Tab
+to see the selected endpoint and connection state, or enter another URL. A
+manual edit overrides an in-flight startup probe and applies to the next line.
 
 ### Routed character voices
 
@@ -64,12 +68,12 @@ default and uses each character's native language while letting multilingual
 characters match the person they are replying to: Hirai speaks Japanese; Eric
 and Yanghua default to Chinese and also speak Japanese and English; Tiffany
 defaults to English and also speaks Japanese and Chinese. `Presentation` asks
-every character to speak English. In character mode, the available language is
-restricted to languages understood by every person in earshot. Eric and
-Yanghua therefore use English around English-only coworkers, Japanese with
-Hirai, and Chinese only when every listener present understands Chinese. When
-no shared language exists, a character continues in their native language and
-listeners who do not know it remember that they could not understand.
+every character to speak English. In character mode, everyone automatically
+understands every language, while output-language etiquette is based on what
+people in earshot can speak. Eric and Yanghua therefore use English around
+English-speaking coworkers, Japanese with Hirai, and Chinese only when every
+listener present can also speak Chinese. When no shared spoken language exists,
+a character continues in their native language and everyone still understands.
 Speech explicitly addressed to `myself` always uses the speaker's native
 language, even when someone else happens to be nearby.
 

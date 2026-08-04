@@ -35,7 +35,6 @@ import type {
 import { whitecatSprites } from "./characters/whitecat";
 import type { SpeechEmotion } from "./speechEmotion";
 import {
-  getSpeechMode,
   SPEECH_LANGUAGE_NAMES,
   type SpeechLanguage,
 } from "./speechLanguage";
@@ -295,10 +294,10 @@ export function broadcastToRoom(
   }
 }
 
-// rooms where time currently stands still: any room holding a humanoid who
-// is mid-decision, whose voice line is queued/playing, whose emote the camera
-// hasn't witnessed yet, or who is mid-swing — or mid-collapse, which is the one
-// thing the dead can still hold a room for
+// Rooms whose audience-facing presentation currently stands still: any room
+// holding a humanoid who is mid-decision, featured in the speech/action queue,
+// whose emote the camera hasn't witnessed yet, or who is mid-swing — or
+// mid-collapse, which is the one thing the dead can still hold a room for.
 export function frozenRooms(world: Humanoid[]) {
   const rooms = new Set<ReturnType<typeof roomOf>>();
   for (const humanoid of world) {
@@ -306,6 +305,25 @@ export function frozenRooms(world: Humanoid[]) {
     if (
       humanoid.thinking ||
       humanoid.speaking ||
+      humanoid.emoteHold ||
+      isPlayingAction(humanoid)
+    ) {
+      rooms.add(roomOf(humanoid.x, humanoid.y));
+    }
+  }
+  return rooms;
+}
+
+// Presentation can hold a room on a spoken shot without holding up the plot.
+// Decisions and their tool calls continue behind TTS; genuinely stateful
+// scenes (thinking, emotes, attacks, and speech-warp requests) remain ordered.
+export function decisionBlockedRooms(world: Humanoid[]) {
+  const rooms = new Set<ReturnType<typeof roomOf>>();
+  for (const humanoid of world) {
+    if (humanoid.dead && !isPlayingAction(humanoid)) continue;
+    if (
+      humanoid.thinking ||
+      humanoid.blocksPlotForPresentation ||
       humanoid.emoteHold ||
       isPlayingAction(humanoid)
     ) {
@@ -581,7 +599,10 @@ export class Humanoid {
   grudge = new Map<string, number>();
 
   thinking = false;
-  speaking = false; // a TTS line of theirs is queued or playing
+  speaking = false; // something featuring them is queued or playing
+  blocksPlotForPresentation = false;
+  private presentationHolds = 0;
+  private plotBlockingPresentationHolds = 0;
   nextThinkAt: number;
   consolidating = false;
   nextMemoryAt = 0;
@@ -596,6 +617,25 @@ export class Humanoid {
     this.nextThinkAt = simNow() + Math.random() * 10000;
 
     this.character.onInit?.(this);
+  }
+
+  private holdPresentation(blocksPlot: boolean) {
+    this.presentationHolds++;
+    if (blocksPlot) this.plotBlockingPresentationHolds++;
+    this.speaking = true;
+    this.blocksPlotForPresentation = this.plotBlockingPresentationHolds > 0;
+  }
+
+  private releasePresentation(blocksPlot: boolean) {
+    this.presentationHolds = Math.max(0, this.presentationHolds - 1);
+    if (blocksPlot) {
+      this.plotBlockingPresentationHolds = Math.max(
+        0,
+        this.plotBlockingPresentationHolds - 1,
+      );
+    }
+    this.speaking = this.presentationHolds > 0;
+    this.blocksPlotForPresentation = this.plotBlockingPresentationHolds > 0;
   }
 
   isMoving(): boolean {
@@ -624,13 +664,13 @@ export class Humanoid {
         focusCameraOnSpeaker(this);
       },
       onEnd: () => {
-        this.speaking = false;
+        this.releasePresentation(true);
         if (this.emote?.text === text) this.emote = null;
       },
     });
     if (beat) {
       // freezes the room from decision to bubble-end, exactly like speech
-      this.speaking = true;
+      this.holdPresentation(true);
       return;
     }
     // queue full: the old instant bubble, held until the camera has seen it
@@ -735,11 +775,11 @@ export class Humanoid {
     }
     // hold the room frozen while the line is being warped, exactly like a
     // queued voice line; delivery re-arms the flag when it lands
-    this.speaking = true;
+    this.holdPresentation(true);
     warp(text)
       .catch(() => text)
       .then((warped) => {
-        this.speaking = false;
+        this.releasePresentation(true);
         if (this.dead) return;
         this.deliverLine(
           warped,
@@ -803,10 +843,12 @@ export class Humanoid {
       },
       onEnd: () => {
         if (this.speech && this.speech.text === text) this.speech = null;
-        this.speaking = false;
+        this.releasePresentation(false);
       },
     });
-    if (spoken) this.speaking = true; // freezes this room until the line ends
+    // TTS holds only the audience-facing shot. Agent decisions and tool calls
+    // continue in the background while the serialized voice line plays.
+    if (spoken) this.holdPresentation(false);
     // no TTS (unsupported browser or full queue): fall back to a timed bubble,
     // and focus now since there is no utterance start to cut on
     if (!spoken) {
@@ -833,10 +875,7 @@ export class Humanoid {
       if (!sameRoom && !(verb === "yell" && adjacent)) continue;
       heardBy.push(other);
       const compose = (heard: string) =>
-        getSpeechMode() !== "presentation" &&
-        !other.character.language.known.includes(language)
-          ? `You heard ${this.character.name} speak in ${SPEECH_LANGUAGE_NAMES[language]}, but you could not understand the words.`
-          : sameRoom
+        sameRoom
           ? `You heard ${this.character.name} ${verb}${addressing === "everyone in the room" ? "" : ` to ${addressing}`} in ${SPEECH_LANGUAGE_NAMES[language]}: "${heard}"`
           : `You heard ${this.character.name} yell in ${SPEECH_LANGUAGE_NAMES[language]} from ${myRoom.promptName}: "${heard}"`;
       const hearWarp = incomingSpeechWarp(other);
@@ -1029,14 +1068,14 @@ export class Humanoid {
     const queued = queueBeat(sceneMs, {
       onStart: strike,
       onEnd: () => {
-        this.speaking = false;
+        this.releasePresentation(true);
       },
     });
     if (!queued) {
       strike(); // queue full: land the blow now rather than drop it
       return;
     }
-    this.speaking = true;
+    this.holdPresentation(true);
   }
 
   takeDamage(part: BodyPart, amount: number, world: Humanoid[], now: number) {

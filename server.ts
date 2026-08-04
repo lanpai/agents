@@ -184,6 +184,34 @@ function isAllowedTtsHost(hostname: string): boolean {
   );
 }
 
+async function checkQwenTts(req: Request): Promise<Response> {
+  const requested = new URL(req.url).searchParams.get("serverUrl");
+  const ttsUrl = requestTtsUrl(requested);
+  if (!ttsUrl) {
+    return Response.json(
+      { ok: false, error: "invalid TTS URL" },
+      { status: 400 },
+    );
+  }
+  try {
+    const response = await fetch(`${ttsUrl}/v1/models`, {
+      signal: AbortSignal.any([req.signal, AbortSignal.timeout(2500)]),
+    });
+    if (!response.ok) {
+      return Response.json(
+        { ok: false, error: `model discovery ${response.status}` },
+        { status: 503 },
+      );
+    }
+    return Response.json({ ok: true, serverUrl: ttsUrl });
+  } catch (error) {
+    return Response.json(
+      { ok: false, error: String(error) },
+      { status: 503 },
+    );
+  }
+}
+
 async function callQwenTts(req: Request): Promise<Response> {
   let body: TtsRequest;
   try {
@@ -529,6 +557,7 @@ Bun.serve({
   port: Number(Bun.env.API_PORT ?? 3002),
   routes: {
     "/api/health": Response.json({ ok: true, backend: BACKEND }),
+    "/api/tts/check": { GET: checkQwenTts },
     "/api/tts": { POST: callQwenTts },
     "/api/agent": {
       POST: async (req) => {

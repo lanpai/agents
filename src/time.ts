@@ -1,6 +1,6 @@
-// simulation clock, in milliseconds. It advances only while the world is
-// actually running — manual pause, TTS playback, and in-flight thinking all
-// freeze it — so timers like nextThinkAt never tick during a pause.
+// Global simulation clock, in milliseconds. Manual pause and cutscenes stop
+// calls to advanceSimTime; room-level presentation holds instead adjust each
+// character's own timers in main.ts.
 let simTime = 0;
 
 export function simNow(): number {
