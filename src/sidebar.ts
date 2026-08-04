@@ -33,6 +33,7 @@ export function initSidebar(options: {
   isPaused: () => boolean;
   setPaused: (value: boolean) => void;
   clearData: () => void;
+  forceKill?: () => string;
   humanoids: Humanoid[];
 }) {
   const sidebar = document.createElement("div");
@@ -78,6 +79,32 @@ export function initSidebar(options: {
 
   const buttons = document.createElement("div");
   buttons.append(pauseButton, clearButton);
+
+  if (options.forceKill) {
+    const forceKillButton = document.createElement("button");
+    forceKillButton.textContent = "force kill";
+    forceKillButton.title =
+      "Dev only: kill a selected living character, or choose a pair automatically";
+    Object.assign(forceKillButton.style, buttonStyle, {
+      marginTop: "8px",
+      color: "#ffb4ae",
+      borderColor: "#8b3b3b",
+    });
+    const forceKillStatus = document.createElement("span");
+    Object.assign(forceKillStatus.style, {
+      display: "inline-block",
+      marginTop: "8px",
+      color: "#9ba4b4",
+    });
+    forceKillButton.addEventListener("click", () => {
+      forceKillButton.disabled = true;
+      forceKillStatus.textContent = options.forceKill!();
+      window.setTimeout(() => {
+        forceKillButton.disabled = false;
+      }, 1200);
+    });
+    buttons.append(document.createElement("br"), forceKillButton, forceKillStatus);
+  }
 
   const angerHeader = document.createElement("h3");
   angerHeader.textContent = "anger";

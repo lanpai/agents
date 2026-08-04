@@ -988,6 +988,7 @@ export class Humanoid {
     verb: StrikeVerb,
     world: Humanoid[],
     now: number,
+    immediate = false,
   ) {
     const strike = () => {
       if (this.dead || this.escaped) return;
@@ -1074,7 +1075,7 @@ export class Humanoid {
       }
     };
 
-    if (verb.present !== "stabs") {
+    if (verb.present !== "stabs" || immediate) {
       strike();
       return;
     }
