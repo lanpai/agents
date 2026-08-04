@@ -1,6 +1,11 @@
 import { characterByName } from "./characters";
 import { createStatus } from "./statuses";
-import { BODY_PARTS, Humanoid, type BodyPart } from "./humanoid";
+import {
+  BODY_PARTS,
+  Humanoid,
+  type BodyPart,
+  type Facing,
+} from "./humanoid";
 import { createItem } from "./interactables";
 import { Item } from "./interactables/types";
 import { ROOMS, roomOf } from "./locations";
@@ -22,6 +27,7 @@ type SavedHumanoid = {
   body: Record<BodyPart, number>;
   stamina: number;
   dead: boolean;
+  facing: Facing; // kept so a corpse lies the way it fell
   running: boolean;
   // statuses rebuild from the registry by name; durationLeft carries the
   // remaining time for timed statuses
@@ -125,6 +131,7 @@ export function saveHumanoids(humanoids: Humanoid[]) {
     body: humanoid.body,
     stamina: humanoid.stamina,
     dead: humanoid.dead,
+    facing: humanoid.facing,
     running: humanoid.running,
     statuses: [...humanoid.statuses.values()].map((status) => {
       const timed = status as { durationLeft?: number };
@@ -189,9 +196,27 @@ function restore(entry: unknown): Humanoid | null {
   }
   if (typeof saved.stamina === "number")
     humanoid.stamina = clamp(saved.stamina);
+  if (
+    saved.facing === "front" ||
+    saved.facing === "back" ||
+    saved.facing === "left" ||
+    saved.facing === "right"
+  ) {
+    humanoid.facing = saved.facing;
+  }
   humanoid.dead = saved.dead === true;
   // a body restored from a save died some time ago: its pool is already full
-  if (humanoid.dead) humanoid.deadFor = 3600;
+  if (humanoid.dead) {
+    humanoid.deadFor = 3600;
+    // the corpse is the last frame of its collapse — re-pose the one-shot
+    // already finished, so it draws the body without re-freezing the room
+    const stabbed = character.sprite.stabbed;
+    humanoid.action = {
+      kind: "stabbed",
+      facing: humanoid.facing,
+      t: stabbed.frames * stabbed.frameMs,
+    };
+  }
   humanoid.running = saved.running === true;
   if (Array.isArray(saved.statuses)) {
     for (const entry of saved.statuses) {
