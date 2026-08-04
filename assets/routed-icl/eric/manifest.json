@@ -1,0 +1,39 @@
+{
+  "character": "Eric",
+  "language": "zh",
+  "source_audio": "/raid/niji-chess/dev-jerry/agents/ignore/voices/Eric.mp3",
+  "sample_rate_hz": 24000,
+  "speaker_embedding_mean_file": "speaker_embedding_mean.json",
+  "clips": [
+    {
+      "file": "01_ecstatic_joy.wav",
+      "text": "成功了！从今天起，就连命运也得叫我一声天才！",
+      "emotion": "ecstatic_joy",
+      "speaker_embedding_file": "01_ecstatic_joy.speaker_embedding.json"
+    },
+    {
+      "file": "02_terror.wav",
+      "text": "别回头……那东西一直在学我们说话，可这里只有我们两个人。",
+      "emotion": "terror",
+      "speaker_embedding_file": "02_terror.speaker_embedding.json"
+    },
+    {
+      "file": "03_villainous_sneer.wav",
+      "text": "你以为我输了？不，我只是终于不用再假装自己是个好人了。",
+      "emotion": "villainous_sneer",
+      "speaker_embedding_file": "03_villainous_sneer.speaker_embedding.json"
+    },
+    {
+      "file": "04_grief.wav",
+      "text": "他们都说英雄不会哭……可没人告诉我，英雄该怎么埋葬自己的故乡。",
+      "emotion": "grief",
+      "speaker_embedding_file": "04_grief.speaker_embedding.json"
+    },
+    {
+      "file": "05_romantic.wav",
+      "text": "拯救世界可以晚五分钟吗？我还没来得及告诉你——我喜欢你。",
+      "emotion": "romantic",
+      "speaker_embedding_file": "05_romantic.speaker_embedding.json"
+    }
+  ]
+}

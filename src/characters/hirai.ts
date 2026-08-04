@@ -9,6 +9,7 @@ export const hirai: Character = {
   },
   description: "",
   voice: {
+    routedVoice: "hirai",
     baseF0: 130,
     rate: 75,
     scale: 1.0,
