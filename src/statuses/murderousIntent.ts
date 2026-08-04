@@ -1,6 +1,8 @@
 import type { Humanoid } from "../humanoid";
 import { Status } from "./types";
 
+export const KILLER_GRACE_S = 120;
+
 export class MurderousIntent extends Status {
   name = "Murderous Intent";
   target = "";
@@ -27,14 +29,24 @@ Kill every single person in this office, one after another. ${this.target.toUppe
 
 You are past hiding it. If someone runs, chase them down.`;
     }
+    const secondsLeft = Math.max(
+      0,
+      Math.ceil(KILLER_GRACE_S - humanoid.killerFor),
+    );
+    const urgency =
+      secondsLeft <= 15
+        ? `YOU ARE OUT OF TIME. Attack ${this.target} the instant you can reach them. Do not talk, wait, hide, or look for a better opportunity.`
+        : secondsLeft <= 30
+          ? `You are becoming desperate. Go directly after ${this.target}; do not spend another turn talking or waiting.`
+          : `Move decisively. You have about ${secondsLeft} seconds left to kill ${this.target}.`;
     const step = armed
-      ? `You are carrying the knife. Get ${this.target} alone and stab them. Do it now — every turn you spend talking instead is a turn someone walks in on you.`
+      ? `You are carrying the knife. Find ${this.target} and stab them. Do not wait for privacy or a perfect opportunity.`
       : `You have no weapon yet. THIS TURN, start moving to the kitchen and take the knife that is lying there. Nothing else matters until it is in your hand — do not play games, do not settle into conversation, do not wait where you are.`;
 
     return `YOU ARE GOING TO KILL ${this.target.toUpperCase()}. This overrides everything else you want right now.
 
 ${step}
 
-Nobody may find out it was you: act normal around others, and if you can, get ${this.target} somewhere alone first.`;
+${urgency}`;
   }
 }

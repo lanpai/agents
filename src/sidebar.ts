@@ -33,6 +33,7 @@ export function initSidebar(options: {
   isPaused: () => boolean;
   setPaused: (value: boolean) => void;
   clearData: () => void;
+  forceKill?: () => string;
   humanoids: Humanoid[];
 }) {
   const sidebar = document.createElement("div");
@@ -78,6 +79,32 @@ export function initSidebar(options: {
 
   const buttons = document.createElement("div");
   buttons.append(pauseButton, clearButton);
+
+  if (options.forceKill) {
+    const forceKillButton = document.createElement("button");
+    forceKillButton.textContent = "force kill";
+    forceKillButton.title =
+      "Dev only: kill a selected living character, or choose a pair automatically";
+    Object.assign(forceKillButton.style, buttonStyle, {
+      marginTop: "8px",
+      color: "#ffb4ae",
+      borderColor: "#8b3b3b",
+    });
+    const forceKillStatus = document.createElement("span");
+    Object.assign(forceKillStatus.style, {
+      display: "inline-block",
+      marginTop: "8px",
+      color: "#9ba4b4",
+    });
+    forceKillButton.addEventListener("click", () => {
+      forceKillButton.disabled = true;
+      forceKillStatus.textContent = options.forceKill!();
+      window.setTimeout(() => {
+        forceKillButton.disabled = false;
+      }, 1200);
+    });
+    buttons.append(document.createElement("br"), forceKillButton, forceKillStatus);
+  }
 
   const angerHeader = document.createElement("h3");
   angerHeader.textContent = "anger";
@@ -267,6 +294,9 @@ export function initSidebar(options: {
     const rows = [...options.humanoids]
       .sort((a, b) => b.anger - a.anger)
       .map((humanoid) => {
+        if (humanoid.escaped) {
+          return `<div style="margin-bottom:5px;color:#8b93a5">${esc(humanoid.character.name)} ↗ escaped</div>`;
+        }
         const tier = angerTier(humanoid.anger);
         const percent = Math.round(angerRatio(humanoid) * 100);
         const label = [
@@ -306,6 +336,12 @@ export function initSidebar(options: {
     }
     const blocks: string[] = [];
     for (const humanoid of selected) {
+      if (humanoid.escaped) {
+        blocks.push(
+          `<div style="margin-bottom:10px"><strong>${esc(humanoid.character.name)}</strong> — escaped the building</div>`,
+        );
+        continue;
+      }
       const carrying =
         humanoid.carrying.map((item) => item.name).join(", ") || "nothing";
       const lines = [

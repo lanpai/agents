@@ -22,7 +22,10 @@ export function reachableTarget(
   name: unknown,
 ): { target: Humanoid } | { reason: string } {
   const target = world.find(
-    (other) => other !== humanoid && other.character.name === name,
+    (other) =>
+      other !== humanoid &&
+      !other.escaped &&
+      other.character.name === name,
   );
   if (!target) return { reason: "you don't see them here" };
   if (target.dead) return { reason: "they are dead" };
@@ -41,7 +44,10 @@ export function strike(
 ) {
   const verbBase = verb.present.replace(/e?s$/, "");
   const target = world.find(
-    (other) => other !== humanoid && other.character.name === input.target,
+    (other) =>
+      other !== humanoid &&
+      !other.escaped &&
+      other.character.name === input.target,
   );
   if (
     !target ||
@@ -136,6 +142,7 @@ export function follow(
   const target = world.find(
     (other) =>
       other !== humanoid &&
+      !other.escaped &&
       other.character.name === input.name &&
       roomOf(other.x, other.y) === roomOf(humanoid.x, humanoid.y),
   );
@@ -200,7 +207,10 @@ export function roommateNames(humanoid: Humanoid, world: Humanoid[]): string[] {
   return world
     .filter(
       (other) =>
-        other !== humanoid && !other.dead && roomOf(other.x, other.y) === room,
+        other !== humanoid &&
+        !other.dead &&
+        !other.escaped &&
+        roomOf(other.x, other.y) === room,
     )
     .map((other) => other.character.name);
 }
@@ -213,6 +223,7 @@ export function destinations(humanoid: Humanoid, world: Humanoid[]): string[] {
     .filter(
       (other) =>
         other !== humanoid &&
+        !other.escaped &&
         roomOf(other.x, other.y) === room &&
         other.followName !== humanoid.character.name,
     )
