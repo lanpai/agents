@@ -95,9 +95,15 @@ if (freshGame) assignRoles(humanoids);
 // places saved items into rooms and carrying arrays; when no save exists,
 // the seeds declared in src/rooms remain
 loadItems(humanoids);
-// Older saves may already contain the first death but predate escape-route
-// persistence. Give those runs the same unlocked exit on their next load.
-if (humanoids.some((humanoid) => humanoid.dead)) activateEscapeRoute(humanoids);
+// Older saves may already contain the first death. Retire any persisted
+// opening-act one-on-one prompts and give pre-escape-route runs the same
+// unlocked exit on their next load.
+if (humanoids.some((humanoid) => humanoid.dead)) {
+  for (const humanoid of humanoids) {
+    humanoid.statuses.delete("Urgent Meeting");
+  }
+  activateEscapeRoute(humanoids);
+}
 
 const save = () => {
   saveHumanoids(humanoids);

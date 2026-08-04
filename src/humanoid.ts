@@ -1122,6 +1122,11 @@ export class Humanoid {
   die(world: Humanoid[], now: number, killer?: Humanoid) {
     if (this.dead || this.escaped) return;
     this.dead = true;
+    // One-on-one meetings are opening-act cover traffic. Once the first body
+    // drops, nobody should keep following that artificial social objective.
+    for (const humanoid of world) {
+      humanoid.statuses.delete("Urgent Meeting");
+    }
     // The first death triggers a building-wide scream and unlocks one
     // persistent, randomly selected exterior exit. Survivors outside this room
     // learn only that something is wrong and where the route appeared; direct
