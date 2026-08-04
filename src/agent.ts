@@ -292,10 +292,11 @@ function speechLanguagePrompt(humanoid: Humanoid): string {
     return "Presentation language mode is active. Speak every line in English and set language to en, even if English is not normally one of your languages.";
   }
   const { native, known } = humanoid.character.language;
-  return `Character language mode is active. You understand every language used in this fictional world. You natively speak ${SPEECH_LANGUAGE_NAMES[native]} and can speak ${known.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}.
+  return `Character language mode is active. You natively speak ${SPEECH_LANGUAGE_NAMES[native]} and can speak and understand ${known.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}.
 - When directly replying to someone, use the language they most recently used if you can speak it.
-- Otherwise use your native language when alone or beginning a conversation.
-- When addressing a group, multilingual speakers use English if an English-only person is present, Japanese if Hirai is present and no English-only person is present, otherwise Chinese when Eric or Yanghua is present. A character who cannot speak that group language continues in their own language.
+- When talking to yourself, address myself and always use your native language, even if others are nearby.
+- Otherwise use your native language when alone or beginning a conversation only when the tool offers it for that audience.
+- The say/yell tool offers only languages understood by everyone currently in earshot. Chinese is available only when every listener understands Chinese. If no shared language exists, you continue in your native language and some listeners may not understand.
 - Always set the say/yell language field to the language the message is actually written in.`;
 }
 
@@ -368,8 +369,14 @@ function buildObservation(humanoid: Humanoid, world: Humanoid[]): string {
               ? "moving"
               : "standing still"
       } in the room with you, ${formatFeet(distance)} away`;
-      if (other.speech)
-        entry += `, saying in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}${other.speech.addressing === "everyone in the room" ? "" : ` to ${other.speech.addressing}`}: "${other.speech.text}"`;
+      if (other.speech) {
+        const understands =
+          getSpeechMode() === "presentation" ||
+          humanoid.character.language.known.includes(other.speech.language);
+        entry += understands
+          ? `, saying in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}${other.speech.addressing === "everyone in the room" ? "" : ` to ${other.speech.addressing}`}: "${other.speech.text}"`
+          : `, speaking in ${SPEECH_LANGUAGE_NAMES[other.speech.language]}, which you do not understand`;
+      }
       if (!other.dead && followingMe)
         entry +=
           ". They will come along wherever you go — to travel together, simply lead the way";

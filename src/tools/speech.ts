@@ -1,22 +1,55 @@
 import type { Humanoid } from "../humanoid";
+import { roomOf } from "../locations";
 import {
   getSpeechMode,
   isSpeechLanguage,
+  mutuallyUnderstoodLanguages,
   SPEECH_LANGUAGE_NAMES,
   type SpeechLanguage,
 } from "../speechLanguage";
 import { roommateNames } from "./shared";
 
 export const ROOM_AUDIENCE = "everyone in the room";
+export const SELF_AUDIENCE = "myself";
 
 export function speechLanguageFor(
   humanoid: Humanoid,
+  world: Humanoid[],
   value: unknown,
+  addressing: string,
+  includeAdjacent = false,
 ): SpeechLanguage {
   if (getSpeechMode() === "presentation") return "en";
-  return isSpeechLanguage(value) && humanoid.character.language.known.includes(value)
+  const languages =
+    addressing === SELF_AUDIENCE
+      ? [humanoid.character.language.native]
+      : speechLanguagesForAudience(humanoid, world, includeAdjacent);
+  return isSpeechLanguage(value) && languages.includes(value)
     ? value
-    : humanoid.character.language.native;
+    : languages[0]!;
+}
+
+function speechLanguagesForAudience(
+  humanoid: Humanoid,
+  world: Humanoid[],
+  includeAdjacent = false,
+): SpeechLanguage[] {
+  const speakerRoom = roomOf(humanoid.x, humanoid.y);
+  const audience = world
+    .filter((other) => {
+      if (other === humanoid || other.dead) return false;
+      const listenerRoom = roomOf(other.x, other.y);
+      return (
+        listenerRoom === speakerRoom ||
+        (includeAdjacent && speakerRoom.doors.includes(listenerRoom.name))
+      );
+    })
+    .map((other) => other.character.language.known);
+  return mutuallyUnderstoodLanguages(
+    humanoid.character.language.known,
+    humanoid.character.language.native,
+    audience,
+  );
 }
 
 export function speechAudienceFor(
@@ -25,17 +58,31 @@ export function speechAudienceFor(
   value: unknown,
 ): string {
   const listeners = roommateNames(humanoid, world);
-  return typeof value === "string" && listeners.includes(value)
+  return value === SELF_AUDIENCE
+    ? SELF_AUDIENCE
+    : typeof value === "string" && listeners.includes(value)
     ? value
     : ROOM_AUDIENCE;
 }
 
-export function speechToolFields(humanoid: Humanoid, world: Humanoid[]) {
+export function speechToolFields(
+  humanoid: Humanoid,
+  world: Humanoid[],
+  includeAdjacent = false,
+) {
   const listeners = roommateNames(humanoid, world);
-  const languages =
+  const audienceLanguages =
     getSpeechMode() === "presentation"
       ? (["en"] as const)
-      : humanoid.character.language.known;
+      : speechLanguagesForAudience(humanoid, world, includeAdjacent);
+  const languages = [
+    ...new Set([
+      ...audienceLanguages,
+      ...(getSpeechMode() === "character"
+        ? [humanoid.character.language.native]
+        : []),
+    ]),
+  ];
   return {
     language: {
       type: "string" as const,
@@ -46,11 +93,11 @@ export function speechToolFields(humanoid: Humanoid, world: Humanoid[]) {
           .join(", ")}). ` +
         (getSpeechMode() === "presentation"
           ? "Presentation mode requires English."
-          : "When replying, match the other person's most recent language when you can; otherwise follow your native and group-language rules."),
+          : `For speech to a person or the room, use a language understood by every listener; the mutually understood options are ${audienceLanguages.map((language) => SPEECH_LANGUAGE_NAMES[language]).join(", ")}. Use ${SPEECH_LANGUAGE_NAMES[humanoid.character.language.native]} only when addressing myself.`),
     },
     addressing: {
       type: "string" as const,
-      enum: [ROOM_AUDIENCE, ...listeners],
+      enum: [SELF_AUDIENCE, ROOM_AUDIENCE, ...listeners],
       description:
         "Who this line is primarily addressed to. Everyone in earshot still hears it.",
     },

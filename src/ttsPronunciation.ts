@@ -5,6 +5,7 @@ import type { SpeechLanguage } from "./speechLanguage";
 // guess pronunciations from capitalization or spelling.
 const ENGLISH_HINTS: readonly [RegExp, string][] = [
   [/\bHirai\b/gi, "heRAI"],
+  [/\bmaimai\b/gi, "My-mai"],
 ];
 
 export function applyTtsPronunciationHints(

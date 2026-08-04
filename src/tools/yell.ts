@@ -58,7 +58,7 @@ export const yell: SimTool = {
               humanoid.character.voice.routedVoice,
             ),
           },
-          ...speechToolFields(humanoid, world),
+          ...speechToolFields(humanoid, world, true),
         },
         required: [
           "written_message",
@@ -78,14 +78,15 @@ export const yell: SimTool = {
         : input.message;
     if (typeof written === "string" && written.length > 0) {
       const spoken = spokenMessageFromWritten(written, input.pronunciations);
+      const addressing = speechAudienceFor(humanoid, world, input.addressing);
       humanoid.say(
         written,
         spoken,
         world,
         simNow(),
         "yell",
-        speechLanguageFor(humanoid, input.language),
-        speechAudienceFor(humanoid, world, input.addressing),
+        speechLanguageFor(humanoid, world, input.language, addressing, true),
+        addressing,
         typeof input.delivery === "string" ? input.delivery : undefined,
         speechEmotion(input.emotion, humanoid.character.voice.routedVoice),
       );

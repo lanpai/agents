@@ -59,19 +59,26 @@ language; an absent or invalid route safely becomes neutral.
 | Yanghua | Yanghua | Chinese |
 | YP | YP | English |
 
-The Tab sidebar has two spoken-language modes. `Presentation` asks every
-character to speak English. `Character languages` uses each character's native
-language and lets multilingual characters match the person they are replying
-to: Hirai speaks Japanese; Eric and Yanghua default to Chinese and also speak
-Japanese and English; Tiffany defaults to English and also speaks Japanese and
-Chinese. Everyone in the fictional simulation understands every language.
+The Tab sidebar has two spoken-language modes. `Character languages` is the
+default and uses each character's native language while letting multilingual
+characters match the person they are replying to: Hirai speaks Japanese; Eric
+and Yanghua default to Chinese and also speak Japanese and English; Tiffany
+defaults to English and also speaks Japanese and Chinese. `Presentation` asks
+every character to speak English. In character mode, the available language is
+restricted to languages understood by every person in earshot. Eric and
+Yanghua therefore use English around English-only coworkers, Japanese with
+Hirai, and Chinese only when every listener present understands Chinese. When
+no shared language exists, a character continues in their native language and
+listeners who do not know it remember that they could not understand.
+Speech explicitly addressed to `myself` always uses the speaker's native
+language, even when someone else happens to be nearby.
 
 Routed emotional ICL references are native-language assets. Non-native speech
 therefore uses the character's mean embedding and a neutral route by default.
-The sidebar's experimental cross-language emotion option reuses the native
-emotional reference while keeping Qwen's output language set to the language
-of the generated line; an upstream rejection is retried with the neutral mean
-embedding.
+The sidebar's experimental cross-language emotion option is enabled by default.
+It reuses the native emotional reference while keeping Qwen's output language
+set to the language of the generated line; an upstream rejection is retried
+with the neutral mean embedding.
 
 Each `say` and `yell` decision includes a natural written line plus a bounded
 list of pronunciation substitutions in the same agent call. The runtime
@@ -84,7 +91,8 @@ ignored rather than risking a mismatch with the displayed line.
 
 English TTS also applies a final pronunciation lexicon after the model's
 spoken rendering. The name `Hirai` is currently sent to the synthesizer as
-`heRAI`; its written spelling remains unchanged everywhere in the UI.
+`heRAI`, and `maimai` is sent as `My-mai`; their written spellings remain
+unchanged everywhere in the UI.
 
 The routed assets can be regenerated with
 `scripts/import-routed-icl-assets.py`; the running app needs neither Python nor

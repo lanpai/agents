@@ -9,8 +9,15 @@ describe("TTS pronunciation hints", () => {
     expect(applyTtsPronunciationHints("Hiraishi", "en")).toBe("Hiraishi");
   });
 
+  test("pronounces maimai as My-mai in English", () => {
+    expect(applyTtsPronunciationHints("Let's play maimai.", "en")).toBe(
+      "Let's play My-mai.",
+    );
+  });
+
   test("does not apply English hints to Japanese or Chinese speech", () => {
     expect(applyTtsPronunciationHints("Hirai", "ja")).toBe("Hirai");
     expect(applyTtsPronunciationHints("Hirai", "zh")).toBe("Hirai");
+    expect(applyTtsPronunciationHints("maimai", "ja")).toBe("maimai");
   });
 });

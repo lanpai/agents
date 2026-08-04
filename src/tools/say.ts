@@ -78,14 +78,15 @@ export const say: SimTool = {
         : input.message;
     if (typeof written === "string" && written.length > 0) {
       const spoken = spokenMessageFromWritten(written, input.pronunciations);
+      const addressing = speechAudienceFor(humanoid, world, input.addressing);
       humanoid.say(
         written,
         spoken,
         world,
         simNow(),
         "say",
-        speechLanguageFor(humanoid, input.language),
-        speechAudienceFor(humanoid, world, input.addressing),
+        speechLanguageFor(humanoid, world, input.language, addressing),
+        addressing,
         typeof input.delivery === "string" ? input.delivery : undefined,
         speechEmotion(input.emotion, humanoid.character.voice.routedVoice),
       );
