@@ -19,5 +19,6 @@ export const eric: Character = {
   },
   language: { native: "zh", known: ["zh", "ja", "en"] },
   initialMemory: "",
-  describeHumanoid: () => "",
+  describeHumanoid: () =>
+    "Eric is a game designer. He is wearing a pink maid outfit.",
 };

@@ -9,7 +9,11 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    host: true,
+  },
   server: {
+    host: true,
     // leading dot also matches ngrok's per-tunnel subdomains
     allowedHosts: [".ngrok-free.app", "tinybox.alpaca-elnath.ts.net"],
     proxy: {

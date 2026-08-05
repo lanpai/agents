@@ -19,5 +19,6 @@ export const yp: Character = {
   },
   language: { native: "en", known: ["en"] },
   initialMemory: "",
-  describeHumanoid: () => "",
+  describeHumanoid: () =>
+    "YP is a manager. He is wearing a Spellbrush branded jacket.",
 };

@@ -19,5 +19,6 @@ export const leland: Character = {
   },
   language: { native: "en", known: ["en"] },
   initialMemory: "",
-  describeHumanoid: () => "Leland has exceptionally cool style as usual.",
+  describeHumanoid: () =>
+    "Leland is in charge of hiring. He has exceptionally cool style as usual.",
 };
