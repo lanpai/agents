@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { isKiller } from "../anger";
+import { isKiller, killerTarget } from "../anger";
 import type { Humanoid } from "../humanoid";
 import { findPath } from "./find_path";
 import { pickUp } from "./pick_up";
@@ -68,6 +68,27 @@ function getToolsFor(humanoid: Humanoid, world: Humanoid[]) {
     "find_path",
     "stand_still",
   ]);
+  // an armed killer with someone still to reach is being walked there by
+  // huntTheTarget, so the tools that would redirect or cancel that walk go the
+  // same way the march's did. Speech stays: a killer past hiding it should be
+  // able to talk while they close in, and a line only roots them for as long
+  // as it plays before the chase is reissued.
+  const armedHunt =
+    isKiller(humanoid) &&
+    humanoid.carrying.some((item) => item.name === "Knife") &&
+    world.some(
+      (other) =>
+        other !== humanoid &&
+        !other.dead &&
+        !other.escaped &&
+        other.character.name === killerTarget(humanoid),
+    );
+  const HUNTING_BLOCKS = new Set([
+    "walk_to",
+    "run_to",
+    "find_path",
+    "stand_still",
+  ]);
   // the blade never leaves a killer's hand by their own choice. Only the sim
   // puts it down — when they lose their nerve, or when they die. Left in
   // reach, the model does drop it (hiding the evidence, handing it over,
@@ -80,6 +101,7 @@ function getToolsFor(humanoid: Humanoid, world: Humanoid[]) {
   const tools = BASIC_SIM_TOOLS.filter(
     (tool) =>
       !(marching && MARCHING_BLOCKS.has(tool.name)) &&
+      !(armedHunt && HUNTING_BLOCKS.has(tool.name)) &&
       !(tool.name === "drop" && !disarmable) &&
       (tool.condition?.(humanoid, world) ?? true),
   );

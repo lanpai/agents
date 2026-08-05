@@ -146,6 +146,15 @@ export function isKiller(humanoid: Humanoid): boolean {
   return !humanoid.escaped && humanoid.statuses.has("Murderous Intent");
 }
 
+// who they are going after right now, by name; "" when the intent has nobody
+// left to point at
+export function killerTarget(humanoid: Humanoid): string {
+  const intent = humanoid.statuses.get("Murderous Intent") as
+    | MurderousIntent
+    | undefined;
+  return intent?.target ?? "";
+}
+
 export function killerIn(world: Humanoid[]): Humanoid | null {
   return world.find(isKiller) ?? null;
 }

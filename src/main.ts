@@ -1,4 +1,5 @@
 import { maybeUpdateMemory, scheduleThinking } from "./agent";
+import { updateBgm } from "./bgm";
 import { initBetting } from "./betting";
 import { camera, initCameraControls, updateCamera } from "./camera";
 import {
@@ -23,7 +24,7 @@ import { Item } from "./interactables/types";
 import { drawLog } from "./log";
 import { executeTool } from "./tools";
 import { moveToRoom } from "./tools/shared";
-import { isKiller } from "./anger";
+import { isKiller, killerTarget } from "./anger";
 import {
   loadHumanoids,
   loadItems,
@@ -394,6 +395,68 @@ function fetchTheKnife(world: Humanoid[], dt: number) {
   if (next) moveToRoom(killer, world, { room: next.name }, true);
 }
 
+// The other half of the same bargain: once they are armed, walking to whoever
+// is next is the sim's job too. The status tells them to find their mark and
+// chase them down, but nothing in the world carried that out — `stab` only
+// reaches someone standing in the same room, so a killer whose target is one
+// door away spent every turn swinging at an empty room. Crossing the building
+// is mechanical; what to do once they are face to face stays the model's call.
+const IDLE_BEFORE_HUNT_S = 0.3;
+// shorter than the knife's: this order is reissued room by room as they close,
+// and a spoken line (which roots them where they stand) shouldn't cost more
+// than a moment of the chase
+const HUNT_REISSUE_S = 2;
+let huntIdle = 0;
+let huntCooldown = 0;
+
+function huntTheTarget(world: Humanoid[], dt: number) {
+  const killer = world.find(isKiller);
+  if (
+    !killer ||
+    killer.dead ||
+    !killer.carrying.some((item) => item.name === "Knife")
+  ) {
+    huntIdle = 0;
+    huntCooldown = 0;
+    return;
+  }
+  huntCooldown = Math.max(0, huntCooldown - dt);
+  // a queued blow counts as busy here: they are already closing on someone
+  const busy =
+    killer.thinking ||
+    killer.speaking ||
+    killer.action !== null ||
+    killer.isMoving() ||
+    killer.pendingUse !== null ||
+    killer.pendingStrike !== null;
+  if (busy) {
+    huntIdle = 0;
+    return;
+  }
+  huntIdle += dt;
+  if (huntIdle < IDLE_BEFORE_HUNT_S || huntCooldown > 0) return;
+
+  const name = killerTarget(killer);
+  const mark = world.find(
+    (other) =>
+      other !== killer &&
+      other.character.name === name &&
+      !other.dead &&
+      !other.escaped,
+  );
+  if (!mark) return; // dead, gone, or nobody named yet — retarget names the next
+  const here = roomOf(killer.x, killer.y);
+  const there = roomOf(mark.x, mark.y);
+  // in the room with them already: the blow, and the last few feet of it, are
+  // the model's to make
+  if (here === there) return;
+  huntIdle = 0;
+  huntCooldown = HUNT_REISSUE_S;
+  const route = findPath(here, there);
+  const next = route?.[1] && roomByName(route[1]);
+  if (next) moveToRoom(killer, world, { room: next.name }, true);
+}
+
 let last = performance.now();
 let frameFaults = 0;
 
@@ -474,6 +537,7 @@ function step(wallNow: number) {
       // a correction of where they already are, not travel
       separateBodies(humanoids);
       fetchTheKnife(humanoids, dt);
+      huntTheTarget(humanoids, dt);
       scheduleThinking(humanoids, now);
       for (const humanoid of humanoids)
         maybeUpdateMemory(humanoid, now, humanoids);
@@ -481,6 +545,9 @@ function step(wallNow: number) {
     // wall-time: the camera glides even while rooms are frozen
     updateCamera(dt);
   }
+  // music runs on wall time and through everything: pauses, cutscenes, frozen
+  // rooms. It is the one thing that never stops with the sim.
+  updateBgm(dt);
   draw(wallNow);
 }
 
